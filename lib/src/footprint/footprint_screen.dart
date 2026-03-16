@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../activity/daily_activity_tracker.dart';
 import '../background/passive_tracking_service.dart';
+import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
 import 'footprint_cell.dart';
 import 'footprint_fog_layer.dart';
@@ -41,6 +42,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
   bool _isFollowMode = true;
 
   int _totalPoints = 0;
+  double _todayDistanceKilometers = 0;
+  PassiveTrackingPreferences _trackingPreferences =
+      PassiveTrackingPreferences.defaultPreferences;
   DateTime? _lastTrackedAt;
   LatLng? _currentLocation;
   List<FootprintCell> _cells = const [];
@@ -117,6 +121,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
     setState(() {
       _cells = snapshot.cells;
       _totalPoints = snapshot.totalPoints;
+      _todayDistanceKilometers = FootprintProgress.todayKilometersFor(snapshot);
+      _trackingPreferences = snapshot.trackingPreferences;
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _currentLocation = snapshot.lastLatLng;
       _lastTrackedAt = snapshot.lastTrackedAt;
@@ -159,11 +165,6 @@ class _FootprintScreenState extends State<FootprintScreen> {
           }
         });
 
-    if (mounted) {
-      setState(() {
-        _isTracking = true;
-      });
-    }
   }
 
   Future<Position?> _resolveBestPosition() async {
@@ -195,6 +196,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
     setState(() {
       _cells = snapshot.cells;
       _totalPoints = snapshot.totalPoints;
+      _todayDistanceKilometers = FootprintProgress.todayKilometersFor(snapshot);
       _currentLocation = point;
       _lastTrackedAt = snapshot.lastTrackedAt;
       _hasSeenOnboarding = snapshot.onboardingSeen;
@@ -370,10 +372,48 @@ class _FootprintScreenState extends State<FootprintScreen> {
     await openAppSettings();
   }
 
+  Future<void> _setPassiveTracking(bool enabled) async {
+    if (enabled) {
+      await _activatePassiveTracking();
+      return;
+    }
+
+    await stopPassiveTrackingService();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isTracking = false;
+    });
+  }
+
+  Future<void> _updateTrackingPreferences(
+    PassiveTrackingPreferences preferences,
+  ) async {
+    await FootprintStorage().saveTrackingPreferences(preferences);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _trackingPreferences = preferences;
+    });
+
+    if (_isTracking) {
+      try {
+        FlutterBackgroundService().invoke('refresh_stream');
+      } catch (_) {
+        await ensurePassiveTrackingServiceRunning();
+      }
+    }
+  }
+
   Future<void> _clearProgress() async {
     await stopPassiveTrackingService();
     await _positionSubscription?.cancel();
     await FootprintStorage().clear();
+    FootprintProgress.invalidateCache();
     if (!mounted) {
       return;
     }
@@ -397,14 +437,18 @@ class _FootprintScreenState extends State<FootprintScreen> {
           return FootprintSettingsScreen(
             totalPoints: _totalPoints,
             knownKilometers: _knownKilometers,
+            traveledTodayKilometers: _todayDistanceKilometers,
             dailySteps: _activityTracker.dailySteps,
             activityLabel: _activityLabel(strings),
             stepSensorAvailable: _activityTracker.sensorAvailable,
             trackingActive: _isTracking,
+            trackingPreferences: _trackingPreferences,
             forgetAfterLabel: strings.forgetAfterDays(
               footprintForgetAfter.inDays,
             ),
             onRequestTracking: _activatePassiveTracking,
+            onTogglePassiveTracking: _setPassiveTracking,
+            onUpdateTrackingPreferences: _updateTrackingPreferences,
             onOpenPermissions: _openPermissions,
             onClearMap: _clearProgress,
           );
@@ -427,7 +471,11 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   String get _pointsLabel => '$_totalPoints pts';
 
-  String get _kilometersLabel => '${_knownKilometers.toStringAsFixed(1)} km';
+  String get _knownKilometersLabel =>
+      '${_knownKilometers.toStringAsFixed(1)} km';
+
+  String get _todayDistanceLabel =>
+      '${_todayDistanceKilometers.toStringAsFixed(1)} km';
 
   String _activityLabel(AppStrings strings) {
     if (!_activityTracker.sensorAvailable ||
@@ -560,14 +608,25 @@ class _FootprintScreenState extends State<FootprintScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _MetricPill(
-                          label: strings.known,
-                          value: _kilometersLabel,
+                          label: strings.today,
+                          value: _todayDistanceLabel,
                         ),
                       ),
                       const SizedBox(width: 10),
                       IconButton.filledTonal(
                         onPressed: _openSettingsScreen,
                         icon: const Icon(Icons.tune_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricPill(
+                          label: strings.totalKnownKm,
+                          value: _knownKilometersLabel,
+                        ),
                       ),
                     ],
                   ),

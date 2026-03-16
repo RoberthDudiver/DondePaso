@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
 import '../legal/legal_screen.dart';
 
@@ -8,24 +9,33 @@ class FootprintSettingsScreen extends StatelessWidget {
     super.key,
     required this.totalPoints,
     required this.knownKilometers,
+    required this.traveledTodayKilometers,
     required this.dailySteps,
     required this.activityLabel,
     required this.stepSensorAvailable,
     required this.trackingActive,
+    required this.trackingPreferences,
     required this.forgetAfterLabel,
     required this.onRequestTracking,
+    required this.onTogglePassiveTracking,
+    required this.onUpdateTrackingPreferences,
     required this.onOpenPermissions,
     required this.onClearMap,
   });
 
   final int totalPoints;
   final double knownKilometers;
+  final double traveledTodayKilometers;
   final int dailySteps;
   final String activityLabel;
   final bool stepSensorAvailable;
   final bool trackingActive;
+  final PassiveTrackingPreferences trackingPreferences;
   final String forgetAfterLabel;
   final Future<void> Function() onRequestTracking;
+  final Future<void> Function(bool enabled) onTogglePassiveTracking;
+  final Future<void> Function(PassiveTrackingPreferences preferences)
+  onUpdateTrackingPreferences;
   final Future<void> Function() onOpenPermissions;
   final Future<void> Function() onClearMap;
 
@@ -51,8 +61,8 @@ class FootprintSettingsScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _MiniMetric(
-                    label: strings.knownKm,
-                    value: knownKilometers.toStringAsFixed(1),
+                    label: strings.totalKnownKm,
+                    value: '${knownKilometers.toStringAsFixed(1)} km',
                   ),
                 ),
               ],
@@ -66,6 +76,13 @@ class FootprintSettingsScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
+                    Expanded(
+                      child: _MiniMetric(
+                        label: strings.traveledTodayKm,
+                        value: '${traveledTodayKilometers.toStringAsFixed(1)} km',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: _MiniMetric(
                         label: strings.todaySteps,
@@ -96,8 +113,31 @@ class FootprintSettingsScreen extends StatelessWidget {
                   label: strings.status,
                   value: trackingActive ? strings.active : strings.off,
                 ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: trackingActive,
+                  activeThumbColor: const Color(0xFFB8FF8C),
+                  onChanged: (value) async {
+                    await onTogglePassiveTracking(value);
+                  },
+                  title: Text(strings.passiveMode),
+                  subtitle: Text(
+                    trackingActive
+                        ? strings.passiveModeBody
+                        : strings.passiveModeOffBody,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.72),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 _InfoLine(label: strings.fading, value: forgetAfterLabel),
+                const SizedBox(height: 14),
+                _TrackingProfileSection(
+                  preferences: trackingPreferences,
+                  onChanged: onUpdateTrackingPreferences,
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -208,6 +248,114 @@ class FootprintSettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TrackingProfileSection extends StatelessWidget {
+  const _TrackingProfileSection({
+    required this.preferences,
+    required this.onChanged,
+  });
+
+  final PassiveTrackingPreferences preferences;
+  final Future<void> Function(PassiveTrackingPreferences preferences) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          strings.trackingProfile,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<PassiveTrackingProfile>(
+          segments: [
+            ButtonSegment(
+              value: PassiveTrackingProfile.batterySaver,
+              label: Text(strings.profileBatterySaver),
+            ),
+            ButtonSegment(
+              value: PassiveTrackingProfile.balanced,
+              label: Text(strings.profileBalanced),
+            ),
+            ButtonSegment(
+              value: PassiveTrackingProfile.precise,
+              label: Text(strings.profilePrecise),
+            ),
+            ButtonSegment(
+              value: PassiveTrackingProfile.custom,
+              label: Text(strings.profileCustom),
+            ),
+          ],
+          selected: {preferences.profile},
+          onSelectionChanged: (selection) async {
+            final selected = selection.first;
+            await onChanged(preferences.copyWith(profile: selected));
+          },
+          multiSelectionEnabled: false,
+          showSelectedIcon: false,
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: preferences.adaptiveModeEnabled,
+          activeThumbColor: const Color(0xFFB8FF8C),
+          onChanged: (value) async {
+            await onChanged(
+              preferences.copyWith(adaptiveModeEnabled: value),
+            );
+          },
+          title: Text(strings.adaptiveTracking),
+          subtitle: Text(
+            strings.adaptiveTrackingBody,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.72),
+            ),
+          ),
+        ),
+        if (preferences.profile == PassiveTrackingProfile.custom) ...[
+          const SizedBox(height: 8),
+          Text(
+            '${strings.customDistance}: ${strings.customDistanceValue(preferences.customDistanceFilterMeters)}',
+          ),
+          Slider(
+            value: preferences.customDistanceFilterMeters.toDouble(),
+            min: 5,
+            max: 60,
+            divisions: 11,
+            activeColor: const Color(0xFFB8FF8C),
+            onChanged: (value) async {
+              await onChanged(
+                preferences.copyWith(
+                  customDistanceFilterMeters: value.round(),
+                ),
+              );
+            },
+          ),
+          Text(
+            '${strings.customInterval}: ${strings.customIntervalValue(preferences.customIntervalSeconds)}',
+          ),
+          Slider(
+            value: preferences.customIntervalSeconds.toDouble(),
+            min: 5,
+            max: 60,
+            divisions: 11,
+            activeColor: const Color(0xFFB8FF8C),
+            onChanged: (value) async {
+              await onChanged(
+                preferences.copyWith(customIntervalSeconds: value.round()),
+              );
+            },
+          ),
+        ],
+      ],
     );
   }
 }

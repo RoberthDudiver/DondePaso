@@ -26,9 +26,10 @@ class AppStrings {
 
   bool get isSpanish => language == AppLanguage.spanish;
 
-  String get appTitle => isSpanish ? 'DondePaso' : 'DondePaso';
+  String get appTitle => 'DondePaso';
   String get points => isSpanish ? 'Puntos' : 'Points';
   String get known => isSpanish ? 'Conocido' : 'Known';
+  String get today => isSpanish ? 'Hoy' : 'Today';
   String get passive => isSpanish ? 'Seguir' : 'Track';
   String get settings => isSpanish ? 'Ajustes' : 'Settings';
   String get legal => isSpanish ? 'Legal' : 'Legal';
@@ -53,6 +54,40 @@ class AppStrings {
   String get movement => isSpanish ? 'Movimiento' : 'Movement';
   String get yourProgress => isSpanish ? 'Tu progreso' : 'Your progress';
   String get knownKm => isSpanish ? 'Km conocidos' : 'Known km';
+  String get totalKnownKm =>
+      isSpanish ? 'Km conocidos total' : 'Total known km';
+  String get traveledTodayKm =>
+      isSpanish ? 'Km recorridos hoy' : 'Km traveled today';
+  String get trackingProfile =>
+      isSpanish ? 'Perfil de rastreo' : 'Tracking profile';
+  String get profileBatterySaver =>
+      isSpanish ? 'Ahorro' : 'Saver';
+  String get profileBalanced =>
+      isSpanish ? 'Medio' : 'Balanced';
+  String get profilePrecise =>
+      isSpanish ? 'Preciso' : 'Precise';
+  String get profileCustom =>
+      isSpanish ? 'Personalizado' : 'Custom';
+  String get customDistance =>
+      isSpanish ? 'Distancia minima' : 'Min distance';
+  String get customInterval =>
+      isSpanish ? 'Intervalo' : 'Interval';
+  String get adaptiveTracking =>
+      isSpanish ? 'Adaptar segun movimiento' : 'Adaptive tracking';
+  String get adaptiveTrackingBody => isSpanish
+      ? 'Cuando detecta poco movimiento, baja precision para ahorrar bateria y vuelve a subirla al moverte.'
+      : 'When movement is low, it reduces tracking intensity to save battery and raises it again once you move.';
+  String get passiveMode => isSpanish ? 'Modo pasivo' : 'Passive mode';
+  String get passiveModeBody => isSpanish
+      ? 'Cuando esta activo, DondePaso sigue registrando en segundo plano y Android muestra una notificacion persistente.'
+      : 'When enabled, DondePaso keeps recording in the background and Android shows a persistent notification.';
+  String get passiveModeOffBody => isSpanish
+      ? 'Si lo apagas, desaparece la notificacion, pero el rastreo pasivo deja de funcionar.'
+      : 'If you turn it off, the notification disappears, but passive tracking stops working.';
+  String customDistanceValue(int meters) =>
+      isSpanish ? '$meters m' : '$meters m';
+  String customIntervalValue(int seconds) =>
+      isSpanish ? '$seconds s' : '$seconds s';
   String get status => isSpanish ? 'Estado' : 'Status';
   String get fading => isSpanish ? 'Olvido' : 'Fade';
   String get todaySteps => isSpanish ? 'Pasos hoy' : 'Steps today';
@@ -179,11 +214,14 @@ class AppStrings {
   String get serviceNotificationTitle =>
       isSpanish ? 'DondePaso activo' : 'DondePaso active';
 
-  String serviceNotificationContent(int points, int knownMeters) {
+  String serviceNotificationContent({
+    required double knownKilometers,
+    required double traveledTodayKilometers,
+  }) {
     if (isSpanish) {
-      return '$points pts · ${knownMeters}m conocidos';
+      return '${knownKilometers.toStringAsFixed(1)} km conocidos · ${traveledTodayKilometers.toStringAsFixed(1)} km hoy';
     }
-    return '$points pts · ${knownMeters}m known';
+    return '${knownKilometers.toStringAsFixed(1)} km known · ${traveledTodayKilometers.toStringAsFixed(1)} km today';
   }
 }
 

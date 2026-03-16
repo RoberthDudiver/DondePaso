@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import '../background/tracking_preferences.dart';
 import 'footprint_cell.dart';
 import 'footprint_storage.dart';
 
@@ -16,6 +18,10 @@ class FootprintSnapshot {
   const FootprintSnapshot({
     required this.cells,
     required this.totalPoints,
+    required this.totalDistanceMeters,
+    required this.todayDistanceMeters,
+    required this.passiveTrackingEnabled,
+    required this.trackingPreferences,
     required this.onboardingSeen,
     required this.lastLatLng,
     required this.lastTrackedAt,
@@ -23,6 +29,10 @@ class FootprintSnapshot {
 
   final List<FootprintCell> cells;
   final int totalPoints;
+  final double totalDistanceMeters;
+  final double todayDistanceMeters;
+  final bool passiveTrackingEnabled;
+  final PassiveTrackingPreferences trackingPreferences;
   final bool onboardingSeen;
   final LatLng? lastLatLng;
   final DateTime? lastTrackedAt;
@@ -31,28 +41,49 @@ class FootprintSnapshot {
 class FootprintProgress {
   FootprintProgress._();
 
+  static FootprintStorageState? _cachedStorageState;
+  static DateTime? _lastFlushAt;
+  static Timer? _flushTimer;
+
   static Future<FootprintSnapshot> loadSnapshot() async {
     final storageState = await FootprintStorage().load();
-    return FootprintSnapshot(
-      cells: storageState.cells,
-      totalPoints: storageState.totalPoints,
-      onboardingSeen: storageState.onboardingSeen,
-      lastLatLng: storageState.lastLatLng,
-      lastTrackedAt: storageState.lastTrackedAt,
-    );
+    _cachedStorageState = storageState;
+    return _snapshotFromState(storageState, DateTime.now());
   }
 
   static Future<FootprintSnapshot> recordVisit({
     required LatLng point,
     DateTime? at,
+    bool persistImmediately = true,
   }) async {
     final storage = FootprintStorage();
-    final storageState = await storage.load();
+    final storageState = _cachedStorageState ?? await storage.load();
     final now = at ?? DateTime.now();
     final cellsByKey = <String, FootprintCell>{
       for (final cell in storageState.cells) _keyFor(cell.latLng): cell,
     };
     var totalPoints = storageState.totalPoints;
+    var totalDistanceMeters = storageState.totalDistanceMeters;
+    final todayKey = _dayKeyFor(now);
+    var todayDistanceMeters = storageState.todayDistanceDayKey == todayKey
+        ? storageState.todayDistanceMeters
+        : 0.0;
+
+    final previousPoint = storageState.lastLatLng;
+    final previousTrackedAt = storageState.lastTrackedAt;
+    if (previousPoint != null && previousTrackedAt != null) {
+      final traveledMeters = _distance.as(LengthUnit.Meter, previousPoint, point);
+      final secondsSinceLast = now.difference(previousTrackedAt).inSeconds;
+      if (traveledMeters >= 8 &&
+          secondsSinceLast > 0 &&
+          secondsSinceLast <= 60 * 20) {
+        final inferredSpeed = traveledMeters / secondsSinceLast;
+        if (inferredSpeed <= 55) {
+          totalDistanceMeters += traveledMeters;
+          todayDistanceMeters += traveledMeters;
+        }
+      }
+    }
 
     final key = _keyFor(point);
     final existingCell = cellsByKey[key];
@@ -81,21 +112,46 @@ class FootprintProgress {
       }
     }
 
-    final cells = cellsByKey.values.toList();
-    await storage.saveProgress(
-      cells: cells,
+    final nextState = FootprintStorageState(
+      cells: cellsByKey.values.toList(),
+      onboardingSeen: storageState.onboardingSeen,
       totalPoints: totalPoints,
-      lastLatLng: point,
+      totalDistanceMeters: totalDistanceMeters,
+      todayDistanceMeters: todayDistanceMeters,
+      todayDistanceDayKey: todayKey,
+      passiveTrackingEnabled: storageState.passiveTrackingEnabled,
+      trackingPreferences: storageState.trackingPreferences,
+      lastLatitude: point.latitude,
+      lastLongitude: point.longitude,
       lastTrackedAt: now,
     );
 
-    return FootprintSnapshot(
-      cells: cells,
-      totalPoints: totalPoints,
-      onboardingSeen: storageState.onboardingSeen,
-      lastLatLng: point,
-      lastTrackedAt: now,
+    _cachedStorageState = nextState;
+    await _persistIfNeeded(
+      storage: storage,
+      storageState: nextState,
+      now: now,
+      force: persistImmediately,
     );
+
+    return _snapshotFromState(nextState, now);
+  }
+
+  static Future<void> flushPending() async {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    final storageState = _cachedStorageState;
+    if (storageState == null) {
+      return;
+    }
+    await _saveState(FootprintStorage(), storageState);
+  }
+
+  static void invalidateCache() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _cachedStorageState = null;
+    _lastFlushAt = null;
   }
 
   static double freshnessFor(FootprintCell cell, DateTime now) {
@@ -115,6 +171,89 @@ class FootprintProgress {
       final weight = 1 + math.min(0.45, (cell.visits - 1) * 0.06);
       return sum + (footprintKnownKilometersPerCell * freshness * weight);
     });
+  }
+
+  static double todayKilometersFor(FootprintSnapshot snapshot) {
+    return snapshot.todayDistanceMeters / 1000;
+  }
+
+  static double totalDistanceKilometersFor(FootprintSnapshot snapshot) {
+    return snapshot.totalDistanceMeters / 1000;
+  }
+
+  static Future<void> _persistIfNeeded({
+    required FootprintStorage storage,
+    required FootprintStorageState storageState,
+    required DateTime now,
+    required bool force,
+  }) async {
+    final shouldFlushNow =
+        force ||
+        _lastFlushAt == null ||
+        now.difference(_lastFlushAt!) >= const Duration(seconds: 45);
+
+    if (shouldFlushNow) {
+      await _saveState(storage, storageState);
+      return;
+    }
+
+    _flushTimer ??= Timer(const Duration(seconds: 30), () async {
+      _flushTimer = null;
+      final latestState = _cachedStorageState;
+      if (latestState != null) {
+        await _saveState(storage, latestState);
+      }
+    });
+  }
+
+  static Future<void> _saveState(
+    FootprintStorage storage,
+    FootprintStorageState storageState,
+  ) async {
+    await storage.saveProgress(
+      cells: storageState.cells,
+      totalPoints: storageState.totalPoints,
+      totalDistanceMeters: storageState.totalDistanceMeters,
+      todayDistanceMeters: storageState.todayDistanceMeters,
+      todayDistanceDayKey:
+          storageState.todayDistanceDayKey ?? _dayKeyFor(DateTime.now()),
+      lastLatLng: storageState.lastLatLng,
+      lastTrackedAt: storageState.lastTrackedAt,
+    );
+    _lastFlushAt = DateTime.now();
+  }
+
+  static FootprintSnapshot _snapshotFromState(
+    FootprintStorageState storageState,
+    DateTime now,
+  ) {
+    return FootprintSnapshot(
+      cells: storageState.cells,
+      totalPoints: storageState.totalPoints,
+      totalDistanceMeters: storageState.totalDistanceMeters,
+      todayDistanceMeters: _todayDistanceMetersFor(storageState, now),
+      passiveTrackingEnabled: storageState.passiveTrackingEnabled,
+      trackingPreferences: storageState.trackingPreferences,
+      onboardingSeen: storageState.onboardingSeen,
+      lastLatLng: storageState.lastLatLng,
+      lastTrackedAt: storageState.lastTrackedAt,
+    );
+  }
+
+  static String _dayKeyFor(DateTime value) {
+    final local = value.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day';
+  }
+
+  static double _todayDistanceMetersFor(
+    FootprintStorageState storageState,
+    DateTime now,
+  ) {
+    return storageState.todayDistanceDayKey == _dayKeyFor(now)
+        ? storageState.todayDistanceMeters
+        : 0;
   }
 
   static String _keyFor(LatLng point) {
