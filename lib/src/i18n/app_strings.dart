@@ -95,18 +95,18 @@ class AppStrings {
   String get localOnly => isSpanish ? 'Solo local' : 'Local only';
   String get locked => isSpanish ? 'Bloqueado' : 'Locked';
   String get noCloud =>
-      isSpanish ? 'Sin nube ni tracking' : 'No cloud, no tracking';
+      isSpanish ? 'Privado por diseno' : 'Private by design';
 
   String get onboardingTitle =>
-      isSpanish ? 'Explora tu entorno' : 'Explore your surroundings';
+      isSpanish ? 'Revela tu mapa' : 'Reveal your map';
 
   String get onboardingBody => isSpanish
-      ? 'Todo se guarda en este telefono. No enviamos tu posicion ni creamos un historial en servidores. El mapa solo revela, en local, las calles que realmente visitas.'
-      : 'Everything stays on this phone. We do not send your position anywhere and we do not build a server-side history. The map only reveals, locally, the streets you actually visit.';
+      ? 'Tu ciudad empieza como un mapa por descubrir. Las calles que recorres se revelan en este telefono y construyen un mapa personal, privado y local.'
+      : 'Your city starts like a map waiting to be uncovered. The streets you travel through are revealed on this phone and build a personal, private, local map.';
 
   String get onboardingExperiment => isSpanish
-      ? 'Es un experimento personal para mostrar lo poco que solemos conocer el entorno donde vivimos.'
-      : 'It is a personal experiment meant to show how little of our surroundings we often truly know.';
+      ? 'Se siente como descubrir el mapa de un juego de mundo abierto, pero con tu vida real. Mientras mas exploras, mas mundo revelas.'
+      : 'It feels like uncovering the map of an open-world game, but with your real life. The more you explore, the more of the world you reveal.';
 
   String get onboardingActivate =>
       isSpanish ? 'Activar seguimiento' : 'Enable tracking';
@@ -115,22 +115,22 @@ class AppStrings {
       isSpanish ? 'Necesitamos ubicacion' : 'Location is required';
 
   String get locationNeededBody => isSpanish
-      ? 'Primero tienes que permitir la ubicacion mientras usas la app para poder activar el rastreo pasivo.'
-      : 'You first need to allow location while using the app before passive tracking can be enabled.';
+      ? 'Primero tienes que permitir la ubicacion mientras usas la app para empezar a revelar tu mapa.'
+      : 'You first need to allow location while using the app to start revealing your map.';
 
   String get backgroundNeededTitle => isSpanish
       ? 'Falta permiso en segundo plano'
       : 'Background permission missing';
 
   String get backgroundNeededBody => isSpanish
-      ? 'Si eliges solo mientras usas la app, el mapa deja de descubrir cuando cierras DondePaso.'
-      : 'If you choose while-using-only, the map stops discovering when you close DondePaso.';
+      ? 'Si eliges solo mientras usas la app, tu mapa deja de revelarse cuando cierras DondePaso.'
+      : 'If you choose while-using-only, your map stops revealing itself once you close DondePaso.';
   String get alwaysPermissionAlertTitle => isSpanish
       ? 'Falta permiso de todo el tiempo'
       : 'Always permission is missing';
   String get alwaysPermissionAlertBody => isSpanish
-      ? 'Sin el permiso de ubicacion de todo el tiempo, DondePaso no puede rastrear bien en segundo plano.'
-      : 'Without always-on location permission, DondePaso cannot track properly in the background.';
+      ? 'Sin el permiso de ubicacion de todo el tiempo, tu mapa deja de revelarse bien cuando la app queda cerrada.'
+      : 'Without always-on location permission, your map cannot keep revealing itself properly when the app is closed.';
   String get grantAlwaysPermission => isSpanish
       ? 'Dar permiso'
       : 'Grant permission';
@@ -139,13 +139,13 @@ class AppStrings {
       isSpanish ? 'Permiso bloqueado' : 'Permission blocked';
 
   String get permissionBlockedBody => isSpanish
-      ? 'Tienes que cambiarlo desde ajustes del sistema para que el rastreo pasivo funcione.'
-      : 'You need to change it in system settings so passive tracking can work.';
+      ? 'Tienes que cambiarlo desde ajustes del sistema para que tu mapa pueda seguir revelandose en segundo plano.'
+      : 'You need to change it in system settings so your map can keep revealing itself in the background.';
 
   String get gpsTitle => isSpanish ? 'Activa el GPS' : 'Turn GPS on';
   String get gpsBody => isSpanish
-      ? 'La ubicacion del telefono esta apagada. Enciendela para descubrir calles aunque la app quede cerrada.'
-      : 'Phone location is turned off. Turn it on to keep discovering streets even when the app is closed.';
+      ? 'La ubicacion del telefono esta apagada. Enciendela para que el mapa siga revelando calles aunque la app quede cerrada.'
+      : 'Phone location is turned off. Turn it on so the map can keep revealing streets even when the app is closed.';
 
   String get locatingYou => isSpanish
       ? 'Buscando tu ubicacion...'
@@ -162,14 +162,14 @@ class AppStrings {
   String get localPrivacyTitle =>
       isSpanish ? 'Privacidad local' : 'Local privacy';
   String get localPrivacyBody => isSpanish
-      ? 'DondePaso no sube rutas ni coordenadas a servidores. Todo se calcula y se guarda en este dispositivo.'
-      : 'DondePaso does not upload routes or coordinates to servers. Everything is computed and stored on this device.';
+      ? 'Tu mapa personal se construye y se queda en este dispositivo. Las calles reveladas, los puntos y el progreso viven localmente.'
+      : 'Your personal map is built and stays on this device. Revealed streets, points, and progress live locally.';
 
   String get experimentTitle =>
-      isSpanish ? 'Experimento personal' : 'Personal experiment';
+      isSpanish ? 'Mundo abierto real' : 'Real-world open world';
   String get experimentBody => isSpanish
-      ? 'Mientras menos zonas activas tengas, menos te estas moviendo. La idea es invitarte a conocer mas tu barrio, tu ciudad y tus rutinas.'
-      : 'The fewer active areas you have, the less you are moving. The idea is to invite you to know more of your neighborhood, your city, and your routines.';
+      ? 'Piensalo como un mapa de videojuego aplicado a tu vida real: lo que visitas se revela, lo que abandonas se apaga y cada salida amplia tu mundo cotidiano.'
+      : 'Think of it as a video game map applied to real life: what you visit is revealed, what you leave behind fades out, and every outing expands your everyday world.';
 
   String forgetAfterDays(int days) =>
       isSpanish ? 'Se va apagando en $days dias' : 'Fades back over $days days';
@@ -179,8 +179,8 @@ class AppStrings {
       : 'Streets you do not revisit fade back into darkness over time.';
 
   String get batteryHint => isSpanish
-      ? 'En Android conviene sacar el ahorro de bateria para que el rastreo pasivo no se corte.'
-      : 'On Android it helps to disable battery saving so passive tracking does not get cut off.';
+      ? 'En Android conviene sacar el ahorro de bateria para que tu mapa siga revelandose sin cortes.'
+      : 'On Android it helps to disable battery saving so your map can keep revealing itself without interruptions.';
   String get community => isSpanish ? 'Comunidad' : 'Community';
   String get communityBody => isSpanish
       ? 'Mira quienes estan construyendo DondePaso contigo y agradece a quienes ya dejaron huella en el proyecto.'

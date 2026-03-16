@@ -20,7 +20,7 @@ No revela un territorio ficticio.
 Revela cuánto de tu barrio, tu ciudad y tu rutina has explorado de verdad.
 
 No intenta decirte a dónde ir.
-Intenta mostrarte, de forma visual, cuánto de tu entorno conoces realmente.
+Intenta darte una forma visual y personal de entender cuánto de tu entorno conoces realmente, como si fueras revelando un mapa de videojuego en la vida real.
 
 Es un experimento personal y social:
 
@@ -37,8 +37,8 @@ La app está pensada para ser local-first:
 - No comparte rutas ni coordenadas.
 - Todo se guarda y se procesa en este dispositivo.
 
-Por eso la app explica al usuario que no lo está rastreando para terceros.
-Lo que existe es un mapa local y visual de su propia huella.
+Por eso la app deja claro que el mapa vive en su propio dispositivo y representa una huella personal de movimiento.
+La experiencia está pensada para ser privada por diseño, simple y local.
 
 Documentos legales:
 
@@ -126,7 +126,7 @@ It does not reveal a fictional world.
 It reveals how much of your neighborhood, your city, and your routine you have truly explored.
 
 It does not try to tell you where to go.
-It tries to show, visually, how much of your surroundings you truly know.
+It tries to give you a personal, visual way to understand how much of your surroundings you truly know, as if you were uncovering a game map in real life.
 
 It is a personal and social experiment:
 
@@ -143,8 +143,8 @@ The app is designed as local-first:
 - It does not share routes or coordinates.
 - Everything is stored and processed on this device.
 
-That is why the app clearly explains that it is not tracking the user for third parties.
-What exists is a local, visual map of the user's own footprint.
+That is why the app makes it clear that the map lives on the user's own device and represents a personal movement footprint.
+The experience is designed to be private by design, simple, and local.
 
 Legal documents:
 
