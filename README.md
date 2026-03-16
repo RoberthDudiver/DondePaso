@@ -1,10 +1,10 @@
 # DondePaso
 
-## Espanol
+## Español
 
-### Que es
+### Qué es
 
-DondePaso es una app mobile de exploracion personal.
+DondePaso es una app mobile de exploración personal.
 
 La idea es simple:
 
@@ -12,25 +12,25 @@ La idea es simple:
 - Solo se va aclarando en las calles y zonas por donde realmente pasas.
 - Si dejas de volver a una zona, esa huella se va apagando con el tiempo.
 
-No intenta decirte a donde ir.
-Intenta mostrarte, de forma visual, cuanto de tu entorno conoces de verdad.
+No intenta decirte a dónde ir.
+Intenta mostrarte, de forma visual, cuánto de tu entorno conoces de verdad.
 
 Es un experimento personal y social:
 
-- Si tienes pocas zonas activas, probablemente te estas moviendo poco.
+- Si tienes pocas zonas activas, probablemente te estás moviendo poco.
 - Si casi no cambias tus recorridos, probablemente conoces muy poco de tu propio barrio o ciudad.
-- La app busca empujarte a explorar, caminar mas y ampliar tu mundo cotidiano.
+- La app busca empujarte a explorar, caminar más y ampliar tu mundo cotidiano.
 
 ### Privacidad
 
-La app esta pensada para ser local-first:
+La app está pensada para ser local-first:
 
-- No sube tu posicion a servidores.
+- No sube tu posición a servidores.
 - No construye un historial remoto.
 - No comparte rutas ni coordenadas.
 - Todo se guarda y se procesa en este dispositivo.
 
-Por eso la app explica al usuario que no lo esta rastreando para terceros.
+Por eso la app explica al usuario que no lo está rastreando para terceros.
 Lo que existe es un mapa local y visual de su propia huella.
 
 Documentos legales:
@@ -40,44 +40,44 @@ Documentos legales:
 
 ### Seguridad
 
-Al abrir la app, DondePaso usa la seguridad ya activa del telefono:
+Al abrir la app, DondePaso usa la seguridad ya activa del teléfono:
 
 - huella
 - rostro
 - PIN
-- patron o metodo equivalente del sistema
+- patrón o método equivalente del sistema
 
 Si el dispositivo no tiene seguridad configurada, la app pide activarla primero.
 
 ### Movimiento y salud
 
-Ademas del mapa, la app puede mostrar informacion local de actividad:
+Además del mapa, la app puede mostrar información local de actividad:
 
 - pasos diarios
 - pulso de actividad
 - puntos por descubrimiento
-- kilometros conocidos
+- kilómetros conocidos
 
-Esto no reemplaza una app medica ni una plataforma fitness completa.
-Es una lectura ligera del movimiento diario para reforzar la idea de exploracion.
+Esto no reemplaza una app médica ni una plataforma fitness completa.
+Es una lectura ligera del movimiento diario para reforzar la idea de exploración.
 
 ### Rastreo pasivo
 
-En Android, DondePaso puede seguir descubriendo zonas con un servicio pasivo y una notificacion persistente.
+En Android, DondePaso puede seguir descubriendo zonas con un servicio pasivo y una notificación persistente.
 
 Importante:
 
-- si el usuario no concede permiso de ubicacion en segundo plano, el descubrimiento se corta al cerrar la app
-- el ahorro de bateria agresivo de algunos fabricantes puede frenar el servicio
+- si el usuario no concede permiso de ubicación en segundo plano, el descubrimiento se corta al cerrar la app
+- el ahorro de batería agresivo de algunos fabricantes puede frenar el servicio
 
-En iPhone existen limitaciones del sistema mas fuertes que en Android, asi que el comportamiento en segundo plano no puede ser tan continuo.
+En iPhone existen limitaciones del sistema más fuertes que en Android, así que el comportamiento en segundo plano no puede ser tan continuo.
 
 ### Idiomas
 
 La interfaz se adapta automaticamente al idioma del sistema:
 
-- Espanol
-- Ingles
+- Español
+- Inglés
 
 ### Stack actual
 
@@ -94,10 +94,10 @@ La interfaz se adapta automaticamente al idioma del sistema:
 DondePaso no quiere ser solo un rastreador bonito.
 Quiere ser una herramienta para que el usuario se pregunte:
 
-- cuanto conozco realmente del lugar donde vivo
-- cuanto camino de verdad
-- cuanto repito siempre los mismos trayectos
-- que tan activa o cerrada se esta volviendo mi vida cotidiana
+- cuánto conozco realmente del lugar donde vivo
+- cuánto camino de verdad
+- cuánto repito siempre los mismos trayectos
+- qué tan activa o cerrada se está volviendo mi vida cotidiana
 
 ## English
 
