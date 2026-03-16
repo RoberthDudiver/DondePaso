@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../community/community_screen.dart';
 import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
 import '../legal/legal_screen.dart';
@@ -227,6 +228,30 @@ class _FootprintSettingsScreenState extends State<FootprintSettingsScreen> {
                     );
                   },
                   child: Text(strings.termsAndPrivacy),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _SettingsCard(
+            title: strings.community,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.communityBody,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 14),
+                FilledButton.tonal(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const CommunityScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(strings.openCommunity),
                 ),
               ],
             ),

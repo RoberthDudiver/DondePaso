@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-03-16T14:39:20.618940+00:00",
+  "repository": {
+    "owner": "RoberthDudiver",
+    "name": "DondePaso",
+    "url": "https://github.com/RoberthDudiver/DondePaso"
+  },
+  "owner": {
+    "rank": 1,
+    "login": "RoberthDudiver",
+    "name": "Roberth Alexander Dudiver Mederos",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/43250955?v=4",
+    "profileUrl": "https://github.com/RoberthDudiver",
+    "role": "Creator",
+    "summary": {
+      "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
+      "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
+    },
+    "commits": 4,
+    "mergedPrs": 0,
+    "changedLines": 0,
+    "score": 12,
+    "lastContributionAt": "2026-03-16T12:25:29Z",
+    "isOwner": true
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "login": "RoberthDudiver",
+      "name": "Roberth Alexander Dudiver Mederos",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/43250955?v=4",
+      "profileUrl": "https://github.com/RoberthDudiver",
+      "role": "Creator",
+      "summary": {
+        "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
+        "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
+      },
+      "commits": 4,
+      "mergedPrs": 0,
+      "changedLines": 0,
+      "score": 12,
+      "lastContributionAt": "2026-03-16T12:25:29Z",
+      "isOwner": true
+    }
+  ],
+  "latestContributors": [
+    {
+      "rank": 1,
+      "login": "RoberthDudiver",
+      "name": "Roberth Alexander Dudiver Mederos",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/43250955?v=4",
+      "profileUrl": "https://github.com/RoberthDudiver",
+      "role": "Creator",
+      "summary": {
+        "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
+        "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
+      },
+      "commits": 4,
+      "mergedPrs": 0,
+      "changedLines": 0,
+      "score": 12,
+      "lastContributionAt": "2026-03-16T12:25:29Z",
+      "isOwner": true
+    }
+  ]
+}

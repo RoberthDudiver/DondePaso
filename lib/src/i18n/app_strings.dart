@@ -181,6 +181,43 @@ class AppStrings {
   String get batteryHint => isSpanish
       ? 'En Android conviene sacar el ahorro de bateria para que el rastreo pasivo no se corte.'
       : 'On Android it helps to disable battery saving so passive tracking does not get cut off.';
+  String get community => isSpanish ? 'Comunidad' : 'Community';
+  String get communityBody => isSpanish
+      ? 'Mira quienes estan construyendo DondePaso contigo y agradece a quienes ya dejaron huella en el proyecto.'
+      : 'See who is building DondePaso with you and celebrate the people already leaving a mark on the project.';
+  String get openCommunity =>
+      isSpanish ? 'Ver colaboradores' : 'View contributors';
+  String get communityLoadFailed => isSpanish
+      ? 'No pude cargar la comunidad ahora mismo.'
+      : 'I could not load the community right now.';
+  String get tryAgain => isSpanish ? 'Intentar otra vez' : 'Try again';
+  String get topContributors =>
+      isSpanish ? 'Top contributors' : 'Top contributors';
+  String get topContributorsBody => isSpanish
+      ? 'Las personas con mas PRs merged, commits y cambios reales en el proyecto.'
+      : 'The people with the most merged PRs, commits, and meaningful changes in the project.';
+  String get latestContributors =>
+      isSpanish ? 'Ultimos 50 colaboradores' : 'Latest 50 contributors';
+  String get latestContributorsBody => isSpanish
+      ? 'Una vista reciente de quienes pasaron por el repo y dejaron avances.'
+      : 'A recent view of who passed through the repo and left progress behind.';
+  String get thankYouContributorsTitle =>
+      isSpanish ? 'Gracias por construirlo' : 'Thanks for building it';
+  String get thankYouContributorsBody => isSpanish
+      ? 'Gracias a todas las personas que colaboran en DondePaso. Cada PR, fix, idea y mejora ayuda a que este experimento crezca con la comunidad.'
+      : 'Thanks to everyone contributing to DondePaso. Every PR, fix, idea, and improvement helps this experiment grow with the community.';
+  String get communityRole => isSpanish ? 'Rol' : 'Role';
+  String get communityScore => isSpanish ? 'Score' : 'Score';
+  String get weeklySync => isSpanish ? 'Sync' : 'Sync';
+  String get profileLink => isSpanish ? 'Perfil' : 'Profile';
+  String get updatedWeekly =>
+      isSpanish ? 'Actualiza cada semana' : 'Updates weekly';
+  String updatedAt(String value) =>
+      isSpanish ? 'Actualizado $value' : 'Updated $value';
+  String contributorStats({required int prs, required int commits}) =>
+      isSpanish ? '$prs PRs · $commits commits' : '$prs PRs · $commits commits';
+  String communityScoreValue(int score) =>
+      isSpanish ? 'Score $score' : 'Score $score';
 
   String get resetDialogTitle => isSpanish ? 'Borrar mapa' : 'Clear map';
   String get resetDialogBody => isSpanish
