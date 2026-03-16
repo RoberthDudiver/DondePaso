@@ -211,3 +211,11 @@ It is meant to make the user ask:
 - how much do I actually walk
 - how often do I repeat the same routes
 - how active or closed off is my everyday life becoming
+
+## Community
+
+DondePaso is now open to community feedback and contributions.
+
+- Use `Discussions` for ideas, questions, and product conversations.
+- Use `Issues` for bugs and concrete feature requests.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for collaboration guidelines.
