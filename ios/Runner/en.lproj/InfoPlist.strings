@@ -1,0 +1,5 @@
+"NSLocationWhenInUseUsageDescription" = "DondePaso uses your location to reveal the streets you actually move through.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "We need your location all the time so your map can keep discovering places even when the app is closed.";
+"NSLocationAlwaysUsageDescription" = "We need continuous location access so passive tracking does not stop.";
+"NSFaceIDUsageDescription" = "DondePaso uses Face ID or your phone security to protect your local map.";
+"NSMotionUsageDescription" = "DondePaso uses motion data to calculate daily steps locally.";
