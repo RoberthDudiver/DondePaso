@@ -40,6 +40,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
   bool _hasSeenOnboarding = false;
   bool _isTracking = false;
   bool _isFollowMode = true;
+  bool _needsAlwaysPermission = false;
 
   int _totalPoints = 0;
   double _todayDistanceKilometers = 0;
@@ -52,6 +53,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
     _activityTracker.addListener(_onActivityChanged);
     _activityTracker.start();
 
@@ -74,6 +76,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     _refreshTimer?.cancel();
     _serviceSubscription?.cancel();
     _positionSubscription?.cancel();
@@ -89,8 +92,17 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
   }
 
+  late final WidgetsBindingObserver _lifecycleObserver =
+      _FootprintLifecycleObserver(
+        onResume: () async {
+          await _refreshPermissionState();
+          await _reloadFromStorage();
+        },
+      );
+
   Future<void> _restoreState() async {
     await _reloadFromStorage();
+    await _refreshPermissionState();
     final running = await isPassiveTrackingServiceRunning();
     if (!mounted) {
       return;
@@ -126,6 +138,18 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _currentLocation = snapshot.lastLatLng;
       _lastTrackedAt = snapshot.lastTrackedAt;
+    });
+  }
+
+  Future<void> _refreshPermissionState() async {
+    final permission = await Geolocator.checkPermission();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _needsAlwaysPermission =
+          _hasSeenOnboarding && permission != LocationPermission.always;
     });
   }
 
@@ -223,6 +247,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
         await FootprintStorage().setOnboardingSeen();
         await ensurePassiveTrackingServiceRunning();
         await _reloadFromStorage();
+        await _refreshPermissionState();
         await _startLiveLocationPreview();
         if (!mounted) {
           return;
@@ -370,6 +395,30 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   Future<void> _openPermissions() async {
     await openAppSettings();
+  }
+
+  Future<void> _requestAlwaysPermissionFromBanner() async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.always) {
+      await _refreshPermissionState();
+      return;
+    }
+
+    final requested = await Permission.locationAlways.request();
+    if (requested.isGranted) {
+      await _refreshPermissionState();
+      if (_isTracking) {
+        try {
+          FlutterBackgroundService().invoke('refresh_stream');
+        } catch (_) {
+          await ensurePassiveTrackingServiceRunning();
+        }
+      }
+      return;
+    }
+
+    await openAppSettings();
+    await _refreshPermissionState();
   }
 
   Future<void> _setPassiveTracking(bool enabled) async {
@@ -597,6 +646,12 @@ class _FootprintScreenState extends State<FootprintScreen> {
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
               child: Column(
                 children: [
+                  if (_needsAlwaysPermission) ...[
+                    _AlwaysPermissionBanner(
+                      onPressed: _requestAlwaysPermissionFromBanner,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -720,6 +775,19 @@ class _FootprintScreenState extends State<FootprintScreen> {
   }
 }
 
+class _FootprintLifecycleObserver with WidgetsBindingObserver {
+  _FootprintLifecycleObserver({required this.onResume});
+
+  final Future<void> Function() onResume;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResume();
+    }
+  }
+}
+
 class _MetricPill extends StatelessWidget {
   const _MetricPill({required this.label, required this.value});
 
@@ -776,6 +844,66 @@ class _TagChip extends StatelessWidget {
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
           color: Colors.white.withValues(alpha: 0.76),
         ),
+      ),
+    );
+  }
+}
+
+class _AlwaysPermissionBanner extends StatelessWidget {
+  const _AlwaysPermissionBanner({required this.onPressed});
+
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF611111),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFF7676), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x55000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strings.alwaysPermissionAlertTitle,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            strings.alwaysPermissionAlertBody,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.92),
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF7A7A),
+                foregroundColor: Colors.black,
+              ),
+              child: Text(strings.grantAlwaysPermission),
+            ),
+          ),
+        ],
       ),
     );
   }

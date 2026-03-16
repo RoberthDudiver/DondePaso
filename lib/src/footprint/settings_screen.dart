@@ -4,7 +4,7 @@ import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
 import '../legal/legal_screen.dart';
 
-class FootprintSettingsScreen extends StatelessWidget {
+class FootprintSettingsScreen extends StatefulWidget {
   const FootprintSettingsScreen({
     super.key,
     required this.totalPoints,
@@ -40,6 +40,53 @@ class FootprintSettingsScreen extends StatelessWidget {
   final Future<void> Function() onClearMap;
 
   @override
+  State<FootprintSettingsScreen> createState() => _FootprintSettingsScreenState();
+}
+
+class _FootprintSettingsScreenState extends State<FootprintSettingsScreen> {
+  late bool _trackingActive;
+  late PassiveTrackingPreferences _trackingPreferences;
+
+  @override
+  void initState() {
+    super.initState();
+    _trackingActive = widget.trackingActive;
+    _trackingPreferences = widget.trackingPreferences;
+  }
+
+  @override
+  void didUpdateWidget(covariant FootprintSettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.trackingActive != widget.trackingActive) {
+      _trackingActive = widget.trackingActive;
+    }
+    if (oldWidget.trackingPreferences != widget.trackingPreferences) {
+      _trackingPreferences = widget.trackingPreferences;
+    }
+  }
+
+  Future<void> _handleTrackingToggle(bool enabled) async {
+    setState(() {
+      _trackingActive = enabled;
+    });
+    await widget.onTogglePassiveTracking(enabled);
+    if (mounted) {
+      setState(() {
+        _trackingActive = enabled;
+      });
+    }
+  }
+
+  Future<void> _handleTrackingPreferencesChanged(
+    PassiveTrackingPreferences preferences,
+  ) async {
+    setState(() {
+      _trackingPreferences = preferences;
+    });
+    await widget.onUpdateTrackingPreferences(preferences);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final strings = context.strings;
 
@@ -55,14 +102,14 @@ class FootprintSettingsScreen extends StatelessWidget {
                 Expanded(
                   child: _MiniMetric(
                     label: strings.points,
-                    value: '$totalPoints',
+                    value: '${widget.totalPoints}',
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _MiniMetric(
                     label: strings.totalKnownKm,
-                    value: '${knownKilometers.toStringAsFixed(1)} km',
+                    value: '${widget.knownKilometers.toStringAsFixed(1)} km',
                   ),
                 ),
               ],
@@ -71,34 +118,30 @@ class FootprintSettingsScreen extends StatelessWidget {
           const SizedBox(height: 14),
           _SettingsCard(
             title: strings.movement,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MiniMetric(
-                        label: strings.traveledTodayKm,
-                        value: '${traveledTodayKilometers.toStringAsFixed(1)} km',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MiniMetric(
-                        label: strings.todaySteps,
-                        value: stepSensorAvailable
-                            ? '$dailySteps'
-                            : strings.stepSensorUnavailable,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MiniMetric(
-                        label: strings.activityPulse,
-                        value: activityLabel,
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: _MiniMetric(
+                    label: strings.traveledTodayKm,
+                    value:
+                        '${widget.traveledTodayKilometers.toStringAsFixed(1)} km',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniMetric(
+                    label: strings.todaySteps,
+                    value: widget.stepSensorAvailable
+                        ? '${widget.dailySteps}'
+                        : strings.stepSensorUnavailable,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniMetric(
+                    label: strings.activityPulse,
+                    value: widget.activityLabel,
+                  ),
                 ),
               ],
             ),
@@ -111,19 +154,17 @@ class FootprintSettingsScreen extends StatelessWidget {
               children: [
                 _InfoLine(
                   label: strings.status,
-                  value: trackingActive ? strings.active : strings.off,
+                  value: _trackingActive ? strings.active : strings.off,
                 ),
                 const SizedBox(height: 12),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: trackingActive,
+                  value: _trackingActive,
                   activeThumbColor: const Color(0xFFB8FF8C),
-                  onChanged: (value) async {
-                    await onTogglePassiveTracking(value);
-                  },
+                  onChanged: _handleTrackingToggle,
                   title: Text(strings.passiveMode),
                   subtitle: Text(
-                    trackingActive
+                    _trackingActive
                         ? strings.passiveModeBody
                         : strings.passiveModeOffBody,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -132,25 +173,25 @@ class FootprintSettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _InfoLine(label: strings.fading, value: forgetAfterLabel),
+                _InfoLine(label: strings.fading, value: widget.forgetAfterLabel),
                 const SizedBox(height: 14),
                 _TrackingProfileSection(
-                  preferences: trackingPreferences,
-                  onChanged: onUpdateTrackingPreferences,
+                  preferences: _trackingPreferences,
+                  onChanged: _handleTrackingPreferencesChanged,
                 ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
                       child: FilledButton(
-                        onPressed: onRequestTracking,
+                        onPressed: widget.onRequestTracking,
                         child: Text(strings.restartTracking),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: onOpenPermissions,
+                        onPressed: widget.onOpenPermissions,
                         child: Text(strings.permissions),
                       ),
                     ),
@@ -235,7 +276,7 @@ class FootprintSettingsScreen extends StatelessWidget {
                         false;
 
                     if (approved) {
-                      await onClearMap();
+                      await widget.onClearMap();
                       if (context.mounted) {
                         Navigator.of(context).pop();
                       }
@@ -252,7 +293,7 @@ class FootprintSettingsScreen extends StatelessWidget {
   }
 }
 
-class _TrackingProfileSection extends StatelessWidget {
+class _TrackingProfileSection extends StatefulWidget {
   const _TrackingProfileSection({
     required this.preferences,
     required this.onChanged,
@@ -260,6 +301,34 @@ class _TrackingProfileSection extends StatelessWidget {
 
   final PassiveTrackingPreferences preferences;
   final Future<void> Function(PassiveTrackingPreferences preferences) onChanged;
+
+  @override
+  State<_TrackingProfileSection> createState() => _TrackingProfileSectionState();
+}
+
+class _TrackingProfileSectionState extends State<_TrackingProfileSection> {
+  late PassiveTrackingPreferences _preferences;
+
+  @override
+  void initState() {
+    super.initState();
+    _preferences = widget.preferences;
+  }
+
+  @override
+  void didUpdateWidget(covariant _TrackingProfileSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.preferences != widget.preferences) {
+      _preferences = widget.preferences;
+    }
+  }
+
+  Future<void> _persist(PassiveTrackingPreferences preferences) async {
+    setState(() {
+      _preferences = preferences;
+    });
+    await widget.onChanged(preferences);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -294,10 +363,9 @@ class _TrackingProfileSection extends StatelessWidget {
               label: Text(strings.profileCustom),
             ),
           ],
-          selected: {preferences.profile},
+          selected: {_preferences.profile},
           onSelectionChanged: (selection) async {
-            final selected = selection.first;
-            await onChanged(preferences.copyWith(profile: selected));
+            await _persist(_preferences.copyWith(profile: selection.first));
           },
           multiSelectionEnabled: false,
           showSelectedIcon: false,
@@ -305,12 +373,10 @@ class _TrackingProfileSection extends StatelessWidget {
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          value: preferences.adaptiveModeEnabled,
+          value: _preferences.adaptiveModeEnabled,
           activeThumbColor: const Color(0xFFB8FF8C),
           onChanged: (value) async {
-            await onChanged(
-              preferences.copyWith(adaptiveModeEnabled: value),
-            );
+            await _persist(_preferences.copyWith(adaptiveModeEnabled: value));
           },
           title: Text(strings.adaptiveTracking),
           subtitle: Text(
@@ -320,37 +386,51 @@ class _TrackingProfileSection extends StatelessWidget {
             ),
           ),
         ),
-        if (preferences.profile == PassiveTrackingProfile.custom) ...[
+        if (_preferences.profile == PassiveTrackingProfile.custom) ...[
           const SizedBox(height: 8),
           Text(
-            '${strings.customDistance}: ${strings.customDistanceValue(preferences.customDistanceFilterMeters)}',
+            '${strings.customDistance}: ${strings.customDistanceValue(_preferences.customDistanceFilterMeters)}',
           ),
           Slider(
-            value: preferences.customDistanceFilterMeters.toDouble(),
+            value: _preferences.customDistanceFilterMeters.toDouble(),
             min: 5,
             max: 60,
             divisions: 11,
             activeColor: const Color(0xFFB8FF8C),
-            onChanged: (value) async {
-              await onChanged(
-                preferences.copyWith(
+            onChanged: (value) {
+              setState(() {
+                _preferences = _preferences.copyWith(
+                  customDistanceFilterMeters: value.round(),
+                );
+              });
+            },
+            onChangeEnd: (value) async {
+              await _persist(
+                _preferences.copyWith(
                   customDistanceFilterMeters: value.round(),
                 ),
               );
             },
           ),
           Text(
-            '${strings.customInterval}: ${strings.customIntervalValue(preferences.customIntervalSeconds)}',
+            '${strings.customInterval}: ${strings.customIntervalValue(_preferences.customIntervalSeconds)}',
           ),
           Slider(
-            value: preferences.customIntervalSeconds.toDouble(),
+            value: _preferences.customIntervalSeconds.toDouble(),
             min: 5,
             max: 60,
             divisions: 11,
             activeColor: const Color(0xFFB8FF8C),
-            onChanged: (value) async {
-              await onChanged(
-                preferences.copyWith(customIntervalSeconds: value.round()),
+            onChanged: (value) {
+              setState(() {
+                _preferences = _preferences.copyWith(
+                  customIntervalSeconds: value.round(),
+                );
+              });
+            },
+            onChangeEnd: (value) async {
+              await _persist(
+                _preferences.copyWith(customIntervalSeconds: value.round()),
               );
             },
           ),

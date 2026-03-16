@@ -125,6 +125,15 @@ class AppStrings {
   String get backgroundNeededBody => isSpanish
       ? 'Si eliges solo mientras usas la app, el mapa deja de descubrir cuando cierras DondePaso.'
       : 'If you choose while-using-only, the map stops discovering when you close DondePaso.';
+  String get alwaysPermissionAlertTitle => isSpanish
+      ? 'Falta permiso de todo el tiempo'
+      : 'Always permission is missing';
+  String get alwaysPermissionAlertBody => isSpanish
+      ? 'Sin el permiso de ubicacion de todo el tiempo, DondePaso no puede rastrear bien en segundo plano.'
+      : 'Without always-on location permission, DondePaso cannot track properly in the background.';
+  String get grantAlwaysPermission => isSpanish
+      ? 'Dar permiso'
+      : 'Grant permission';
 
   String get permissionBlockedTitle =>
       isSpanish ? 'Permiso bloqueado' : 'Permission blocked';
