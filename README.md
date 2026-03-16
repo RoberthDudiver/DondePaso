@@ -12,8 +12,15 @@ La idea es simple:
 - Solo se va aclarando en las calles y zonas por donde realmente pasas.
 - Si dejas de volver a una zona, esa huella se va apagando con el tiempo.
 
+La mejor forma de entenderlo es esta:
+
+DondePaso se siente como descubrir el mapa de un juego de mundo abierto, pero con tu vida real.
+
+No revela un territorio ficticio.
+Revela cuánto de tu barrio, tu ciudad y tu rutina has explorado de verdad.
+
 No intenta decirte a dónde ir.
-Intenta mostrarte, de forma visual, cuánto de tu entorno conoces de verdad.
+Intenta mostrarte, de forma visual, cuánto de tu entorno conoces realmente.
 
 Es un experimento personal y social:
 
@@ -74,7 +81,7 @@ En iPhone existen limitaciones del sistema más fuertes que en Android, así que
 
 ### Idiomas
 
-La interfaz se adapta automaticamente al idioma del sistema:
+La interfaz se adapta automáticamente al idioma del sistema:
 
 - Español
 - Inglés
@@ -110,6 +117,13 @@ The core idea is simple:
 - Your map starts almost completely dark.
 - It only becomes visible in the streets and areas you actually move through.
 - If you stop revisiting a place, that footprint slowly fades again.
+
+The easiest way to describe it is this:
+
+DondePaso feels like uncovering the map of an open-world game, but with your real life.
+
+It does not reveal a fictional world.
+It reveals how much of your neighborhood, your city, and your routine you have truly explored.
 
 It does not try to tell you where to go.
 It tries to show, visually, how much of your surroundings you truly know.
