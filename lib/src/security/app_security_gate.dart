@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -12,18 +14,55 @@ class AppSecurityGate extends StatefulWidget {
   State<AppSecurityGate> createState() => _AppSecurityGateState();
 }
 
-class _AppSecurityGateState extends State<AppSecurityGate> {
+class _AppSecurityGateState extends State<AppSecurityGate>
+    with WidgetsBindingObserver {
   final LocalAuthentication _auth = LocalAuthentication();
 
   bool _isChecking = true;
   bool _isUnlocked = false;
   bool _securityUnavailable = false;
   bool _authInProgress = false;
+  bool _unlockScheduled = false;
+  Timer? _unlockTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleUnlock();
+    });
+  }
+
+  @override
+  void dispose() {
+    _unlockTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        !_isUnlocked &&
+        !_authInProgress &&
+        !_unlockScheduled) {
+      _scheduleUnlock();
+    }
+  }
+
+  void _scheduleUnlock() {
+    if (_unlockScheduled || _isUnlocked || _authInProgress || !mounted) {
+      return;
+    }
+
+    _unlockScheduled = true;
+    _unlockTimer?.cancel();
+    _unlockTimer = Timer(const Duration(milliseconds: 450), () {
+      _unlockScheduled = false;
+      if (!mounted || _isUnlocked || _authInProgress) {
+        return;
+      }
       _unlock();
     });
   }
@@ -76,8 +115,19 @@ class _AppSecurityGateState extends State<AppSecurityGate> {
         _securityUnavailable = false;
         _isChecking = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
+        return;
+      }
+
+      final message = error.toString();
+      if (message.contains('onSaveInstanceState')) {
+        setState(() {
+          _isUnlocked = false;
+          _securityUnavailable = false;
+          _isChecking = false;
+        });
+        _scheduleUnlock();
         return;
       }
 
@@ -137,7 +187,7 @@ class _AppSecurityGateState extends State<AppSecurityGate> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isChecking ? null : _unlock,
+                  onPressed: _isChecking ? null : _scheduleUnlock,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                   ),

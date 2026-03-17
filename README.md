@@ -96,6 +96,42 @@ La interfaz se adapta automáticamente al idioma del sistema:
 - local_auth
 - pedometer
 
+### Desarrollo local
+
+El repo publico compila aunque no tengas Firebase configurado.
+
+Si clonas el proyecto y ejecutas:
+
+```powershell
+flutter run
+```
+
+la app abre normal, pero `Analytics` y `Crashlytics` quedan apagados.
+
+Si quieres activarlos solo en tu maquina:
+
+1. copia [firebase.local.example.json](firebase.local.example.json) a `firebase.local.json`
+2. si usas `google-services.json` o `GoogleService-Info.plist` solo en tu maquina, deja `FIREBASE_USE_NATIVE_CONFIG` en `true`
+3. rellena tus valores locales
+4. corre la app asi:
+
+```powershell
+flutter run --dart-define-from-file=firebase.local.json
+```
+
+Para builds:
+
+```powershell
+flutter build apk --debug --dart-define-from-file=firebase.local.json
+```
+
+Notas:
+
+- `firebase.local.json` esta ignorado por git
+- `FIREBASE_USE_NATIVE_CONFIG=true` hace que Flutter reutilice la configuracion nativa local y no intente recrear `[DEFAULT]`
+- el repo ya no depende de `lib/firebase_options.dart`
+- si falta configuracion local, la app no explota: solo desactiva Firebase
+
 ### Objetivo del producto
 
 DondePaso no quiere ser solo un rastreador bonito.
@@ -201,6 +237,42 @@ The interface automatically follows the device language:
 - permission_handler
 - local_auth
 - pedometer
+
+### Local development
+
+The public repo builds even if Firebase is not configured.
+
+If you clone the project and run:
+
+```powershell
+flutter run
+```
+
+the app still opens normally, but `Analytics` and `Crashlytics` stay disabled.
+
+If you want Firebase only on your own machine:
+
+1. copy [firebase.local.example.json](firebase.local.example.json) to `firebase.local.json`
+2. if you use local `google-services.json` or `GoogleService-Info.plist`, keep `FIREBASE_USE_NATIVE_CONFIG` set to `true`
+3. fill in your local values
+4. run the app like this:
+
+```powershell
+flutter run --dart-define-from-file=firebase.local.json
+```
+
+For builds:
+
+```powershell
+flutter build apk --debug --dart-define-from-file=firebase.local.json
+```
+
+Notes:
+
+- `firebase.local.json` is gitignored
+- `FIREBASE_USE_NATIVE_CONFIG=true` makes Flutter reuse the local native Firebase config instead of trying to recreate `[DEFAULT]`
+- the repo no longer depends on `lib/firebase_options.dart`
+- if local config is missing, the app does not crash: it simply disables Firebase
 
 ### Product goal
 

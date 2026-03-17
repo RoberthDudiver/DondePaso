@@ -4,6 +4,10 @@ import 'package:flutter/foundation.dart';
 class FirebaseRuntimeOptions {
   FirebaseRuntimeOptions._();
 
+  static const bool _useNativeConfig = bool.fromEnvironment(
+    'FIREBASE_USE_NATIVE_CONFIG',
+    defaultValue: false,
+  );
   static const String _apiKey = String.fromEnvironment(
     'FIREBASE_API_KEY',
     defaultValue: '',
@@ -41,7 +45,13 @@ class FirebaseRuntimeOptions {
     defaultValue: '',
   );
 
+  static bool get prefersNativeConfig => _useNativeConfig;
+
   static bool get isConfigured {
+    if (_useNativeConfig) {
+      return true;
+    }
+
     if (_apiKey.isEmpty ||
         _messagingSenderId.isEmpty ||
         _projectId.isEmpty) {

@@ -17,16 +17,22 @@ class FirebaseTelemetry {
   static bool get isEnabled => _initialized;
 
   static Future<void> initialize() async {
-    if (_initialized ||
-        kIsWeb ||
-        !_supportsFirebasePlatform ||
-        !FirebaseRuntimeOptions.isConfigured) {
+    if (_initialized || kIsWeb || !_supportsFirebasePlatform) {
       return;
     }
 
-    await Firebase.initializeApp(
-      options: FirebaseRuntimeOptions.currentPlatform,
-    );
+    if (!FirebaseRuntimeOptions.isConfigured) {
+      if (kDebugMode) {
+        debugPrint(
+          'FirebaseTelemetry: local config not found. '
+          'Analytics and Crashlytics are disabled for this run. '
+          'Use --dart-define-from-file=firebase.local.json to enable them locally.',
+        );
+      }
+      return;
+    }
+
+    await _ensureFirebaseApp();
 
     _analytics = FirebaseAnalytics.instance;
     _observer = FirebaseAnalyticsObserver(analytics: _analytics!);
@@ -56,5 +62,33 @@ class FirebaseTelemetry {
       TargetPlatform.iOS => true,
       _ => false,
     };
+  }
+
+  static Future<void> _ensureFirebaseApp() async {
+    try {
+      Firebase.app();
+      return;
+    } on FirebaseException {
+      // Continue and initialize below.
+    } catch (_) {
+      // Continue and initialize below.
+    }
+
+    try {
+      if (FirebaseRuntimeOptions.prefersNativeConfig) {
+        await Firebase.initializeApp();
+        return;
+      }
+
+      await Firebase.initializeApp(
+        options: FirebaseRuntimeOptions.currentPlatform,
+      );
+    } on FirebaseException catch (error) {
+      if (error.code == 'duplicate-app') {
+        Firebase.app();
+        return;
+      }
+      rethrow;
+    }
   }
 }

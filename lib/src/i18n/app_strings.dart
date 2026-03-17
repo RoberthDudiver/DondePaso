@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../footprint/footprint_timelapse_range.dart';
+
 enum AppLanguage { english, spanish }
 
 class AppStrings {
@@ -414,15 +416,31 @@ class AppStrings {
       isSpanish ? 'Tarjeta del mapa' : 'Map card';
   String get shareTimelapseOption =>
       isSpanish ? 'Timelapse' : 'Timelapse';
+  String get shareTimelapseRangeTitle =>
+      isSpanish ? 'Periodo del timelapse' : 'Timelapse range';
+  String timelapseRangeLabel(FootprintTimelapseRange range) {
+    return switch (range) {
+      FootprintTimelapseRange.global => isSpanish ? 'Global' : 'Global',
+      FootprintTimelapseRange.today => isSpanish ? 'Hoy' : 'Today',
+      FootprintTimelapseRange.last7Days => isSpanish ? '7 dias' : '7 days',
+      FootprintTimelapseRange.last30Days => isSpanish ? '30 dias' : '30 days',
+    };
+  }
   String get timelapseIntroOverline => isSpanish
       ? 'Tu huella urbana'
       : 'Your urban footprint';
   String get timelapseIntroTitle => isSpanish
       ? 'No exploras un mapa.\nRevelas el tuyo.'
       : 'You do not explore a map.\nYou reveal your own.';
-  String timelapseIntroBody(String zoneName) => isSpanish
-      ? 'Cada calle recorrida en $zoneName enciende una parte real de tu ciudad.'
-      : 'Every street you travel through in $zoneName lights up a real piece of your city.';
+  String timelapseIntroBody(String zoneName, String rangeLabel) => isSpanish
+      ? 'Cada calle recorrida en $zoneName durante $rangeLabel enciende una parte real de tu ciudad.'
+      : 'Every street you travel through in $zoneName during $rangeLabel lights up a real piece of your city.';
+  String get timelapseHeroTitle => isSpanish
+      ? 'Tu ciudad ya no esta en sombra.'
+      : 'Your city is no longer in shadow.';
+  String timelapseHeroBody(String zoneName, int percent, String rangeLabel) => isSpanish
+      ? '$zoneName ya late con $percent% de exploracion real en $rangeLabel.'
+      : '$zoneName now pulses with $percent% real exploration in $rangeLabel.';
   String get shareTimelapseLoading =>
       isSpanish ? 'Generando timelapse...' : 'Generating timelapse...';
   String get shareMapTitle =>
@@ -430,6 +448,9 @@ class AppStrings {
   String shareMapBody(String zoneName, int percent) => isSpanish
       ? 'Estoy revelando $zoneName y llevo $percent% de exploracion urbana en DondePaso.'
       : 'I am revealing $zoneName and I am already at $percent% urban exploration in DondePaso.';
+  String timelapseShareBody(String zoneName, int percent, String rangeLabel) => isSpanish
+      ? 'Estoy revelando $zoneName y llevo $percent% de exploracion urbana en $rangeLabel en DondePaso.'
+      : 'I am revealing $zoneName and I am already at $percent% urban exploration in $rangeLabel in DondePaso.';
   String get shareMapError => isSpanish
       ? 'No pude generar la tarjeta para compartir.'
       : 'I could not generate the share card.';

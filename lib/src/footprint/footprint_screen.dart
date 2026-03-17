@@ -25,6 +25,7 @@ import 'footprint_progress.dart';
 import 'footprint_progression.dart';
 import 'footprint_storage.dart';
 import 'footprint_timelapse_service.dart';
+import 'footprint_timelapse_range.dart';
 import 'footprint_transport.dart';
 import 'footprint_zones.dart';
 import 'settings_screen.dart';
@@ -741,7 +742,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
   }
 
-  Future<void> _shareTimelapse() async {
+  Future<void> _shareTimelapse(FootprintTimelapseRange range) async {
     final strings = context.strings;
     final zoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
     final explorationPercent = (_cityExplorationRatio * 100).round();
@@ -778,6 +779,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
         explorationPercent: explorationPercent,
         totalPoints: _totalPoints,
         knownKilometers: _knownKilometers,
+        range: range,
       );
     } catch (_) {
       if (mounted) {
@@ -788,6 +790,46 @@ class _FootprintScreenState extends State<FootprintScreen> {
         Navigator.of(context, rootNavigator: true).pop();
       }
     }
+  }
+
+  Future<void> _openTimelapseRangeOptions() async {
+    final strings = context.strings;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0A0B0E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.shareTimelapseRangeTitle,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final range in FootprintTimelapseRange.values)
+                  ListTile(
+                    leading: const Icon(Icons.timelapse_rounded),
+                    title: Text(strings.timelapseRangeLabel(range)),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      await _shareTimelapse(range);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openShareOptions() async {
@@ -826,7 +868,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
                   title: Text(strings.shareTimelapseOption),
                   onTap: () async {
                     Navigator.of(context).pop();
-                    await _shareTimelapse();
+                    await _openTimelapseRangeOptions();
                   },
                 ),
               ],
