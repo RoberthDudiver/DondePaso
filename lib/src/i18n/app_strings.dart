@@ -349,6 +349,24 @@ class AppStrings {
   String achievementVehicleBody(int kilometers) => isSpanish
       ? 'Acumula $kilometers km recorridos en auto sin salirte del mapa.'
       : 'Accumulate $kilometers km traveled by car without leaving the map behind.';
+  String achievementLocalZoneTitle(String zoneName, int percent) => isSpanish
+      ? '$zoneName $percent%'
+      : '$zoneName $percent%';
+  String achievementLocalZoneBody(String zoneName, int percent) => isSpanish
+      ? 'Descubre $percent% de $zoneName.'
+      : 'Reveal $percent% of $zoneName.';
+  String achievementLocalZoneFullTitle(String zoneName) => isSpanish
+      ? '$zoneName completo'
+      : '$zoneName complete';
+  String achievementLocalZoneFullBody(String zoneName) => isSpanish
+      ? 'Cierra casi por completo $zoneName y dejalo encendido en tu mapa.'
+      : 'Nearly complete $zoneName and keep it lit on your map.';
+  String achievementStreakTitle(int days) => isSpanish
+      ? '$days dias seguidos'
+      : '$days-day streak';
+  String achievementStreakBody(int days) => isSpanish
+      ? 'Mantente activo durante $days dias seguidos para que tu radar no se enfrie.'
+      : 'Stay active for $days days in a row so your radar does not cool down.';
   String get community => isSpanish ? 'Comunidad' : 'Community';
   String get generalOverview =>
       isSpanish ? 'Resumen general' : 'Overview';
@@ -380,9 +398,44 @@ class AppStrings {
       isSpanish ? 'Km recorridos total' : 'Total distance';
   String get vehicleDistance =>
       isSpanish ? 'Km en auto' : 'Km by car';
+  String get currentStreakLabel =>
+      isSpanish ? 'Racha actual' : 'Current streak';
+  String get bestStreakLabel =>
+      isSpanish ? 'Mejor racha' : 'Best streak';
+  String streakDaysValue(int days) =>
+      isSpanish ? '$days dias' : '$days days';
   String get onFoot => isSpanish ? 'A pie' : 'On foot';
   String get byCar => isSpanish ? 'En auto' : 'By car';
   String get recentTrace => isSpanish ? 'Huella reciente' : 'Recent trace';
+  String get share => isSpanish ? 'Compartir' : 'Share';
+  String get shareOptionsTitle =>
+      isSpanish ? 'Compartir tu mapa' : 'Share your map';
+  String get shareCardOption =>
+      isSpanish ? 'Tarjeta del mapa' : 'Map card';
+  String get shareTimelapseOption =>
+      isSpanish ? 'Timelapse' : 'Timelapse';
+  String get timelapseIntroOverline => isSpanish
+      ? 'Tu huella urbana'
+      : 'Your urban footprint';
+  String get timelapseIntroTitle => isSpanish
+      ? 'No exploras un mapa.\nRevelas el tuyo.'
+      : 'You do not explore a map.\nYou reveal your own.';
+  String timelapseIntroBody(String zoneName) => isSpanish
+      ? 'Cada calle recorrida en $zoneName enciende una parte real de tu ciudad.'
+      : 'Every street you travel through in $zoneName lights up a real piece of your city.';
+  String get shareTimelapseLoading =>
+      isSpanish ? 'Generando timelapse...' : 'Generating timelapse...';
+  String get shareMapTitle =>
+      isSpanish ? 'Mi mapa en DondePaso' : 'My DondePaso map';
+  String shareMapBody(String zoneName, int percent) => isSpanish
+      ? 'Estoy revelando $zoneName y llevo $percent% de exploracion urbana en DondePaso.'
+      : 'I am revealing $zoneName and I am already at $percent% urban exploration in DondePaso.';
+  String get shareMapError => isSpanish
+      ? 'No pude generar la tarjeta para compartir.'
+      : 'I could not generate the share card.';
+  String get shareTimelapseError => isSpanish
+      ? 'No pude generar el timelapse.'
+      : 'I could not generate the timelapse.';
   String get activeZones =>
       isSpanish ? 'Zonas activas' : 'Active zones';
   String get unlockedAchievements =>
@@ -496,6 +549,11 @@ class AppStrings {
 
   String get serviceNotificationTitle =>
       isSpanish ? 'DondePaso activo' : 'DondePaso active';
+  String get radarCoolingTitle =>
+      isSpanish ? 'Tu radar se enfria' : 'Your radar is cooling down';
+  String radarCoolingBody(int streakDays) => isSpanish
+      ? 'Llevas $streakDays dias seguidos. Sal a revelar una calle nueva antes de que tu mapa se enfrie.'
+      : 'You are on a $streakDays-day streak. Go reveal a new street before your map cool down.';
 
   String serviceNotificationContent({
     required double knownKilometers,

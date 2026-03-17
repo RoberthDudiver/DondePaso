@@ -14,6 +14,8 @@ Route<void> buildFootprintOverviewRoute({
   required double traveledTodayKilometers,
   required double totalDistanceKilometers,
   required double vehicleDistanceKilometers,
+  required int currentStreak,
+  required int bestStreak,
   required int dailySteps,
   required String activityLabel,
   required FootprintZonesSnapshot zonesSnapshot,
@@ -26,6 +28,8 @@ Route<void> buildFootprintOverviewRoute({
       traveledTodayKilometers: traveledTodayKilometers,
       totalDistanceKilometers: totalDistanceKilometers,
       vehicleDistanceKilometers: vehicleDistanceKilometers,
+      currentStreak: currentStreak,
+      bestStreak: bestStreak,
       dailySteps: dailySteps,
       activityLabel: activityLabel,
       zonesSnapshot: zonesSnapshot,
@@ -48,6 +52,8 @@ Route<void> buildFootprintProgressRoute({
   required double traveledTodayKilometers,
   required double totalDistanceKilometers,
   required double vehicleDistanceKilometers,
+  required int currentStreak,
+  required int bestStreak,
   required int dailySteps,
   required String activityLabel,
   required bool stepSensorAvailable,
@@ -59,6 +65,8 @@ Route<void> buildFootprintProgressRoute({
       traveledTodayKilometers: traveledTodayKilometers,
       totalDistanceKilometers: totalDistanceKilometers,
       vehicleDistanceKilometers: vehicleDistanceKilometers,
+      currentStreak: currentStreak,
+      bestStreak: bestStreak,
       dailySteps: dailySteps,
       activityLabel: activityLabel,
       stepSensorAvailable: stepSensorAvailable,
@@ -82,6 +90,8 @@ class FootprintSettingsScreen extends StatelessWidget {
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
     required this.vehicleDistanceKilometers,
+    required this.currentStreak,
+    required this.bestStreak,
     required this.dailySteps,
     required this.activityLabel,
     required this.stepSensorAvailable,
@@ -106,6 +116,8 @@ class FootprintSettingsScreen extends StatelessWidget {
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
   final double vehicleDistanceKilometers;
+  final int currentStreak;
+  final int bestStreak;
   final int dailySteps;
   final String activityLabel;
   final bool stepSensorAvailable;
@@ -139,6 +151,8 @@ class FootprintSettingsScreen extends StatelessWidget {
             knownKilometers: knownKilometers,
             traveledTodayKilometers: traveledTodayKilometers,
             vehicleDistanceKilometers: vehicleDistanceKilometers,
+            currentStreak: currentStreak,
+            bestStreak: bestStreak,
           ),
           const SizedBox(height: 14),
           _HubCard(
@@ -154,6 +168,8 @@ class FootprintSettingsScreen extends StatelessWidget {
                     traveledTodayKilometers: traveledTodayKilometers,
                     totalDistanceKilometers: totalDistanceKilometers,
                     vehicleDistanceKilometers: vehicleDistanceKilometers,
+                    currentStreak: currentStreak,
+                    bestStreak: bestStreak,
                     dailySteps: dailySteps,
                     activityLabel: activityLabel,
                     zonesSnapshot: zonesSnapshot,
@@ -192,6 +208,8 @@ class FootprintSettingsScreen extends StatelessWidget {
                     traveledTodayKilometers: traveledTodayKilometers,
                     totalDistanceKilometers: totalDistanceKilometers,
                     vehicleDistanceKilometers: vehicleDistanceKilometers,
+                    currentStreak: currentStreak,
+                    bestStreak: bestStreak,
                     dailySteps: dailySteps,
                     activityLabel: activityLabel,
                     stepSensorAvailable: stepSensorAvailable,
@@ -278,6 +296,8 @@ class _OverviewScreen extends StatefulWidget {
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
     required this.vehicleDistanceKilometers,
+    required this.currentStreak,
+    required this.bestStreak,
     required this.dailySteps,
     required this.activityLabel,
     required this.zonesSnapshot,
@@ -289,6 +309,8 @@ class _OverviewScreen extends StatefulWidget {
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
   final double vehicleDistanceKilometers;
+  final int currentStreak;
+  final int bestStreak;
   final int dailySteps;
   final String activityLabel;
   final FootprintZonesSnapshot zonesSnapshot;
@@ -366,6 +388,14 @@ class _OverviewScreenState extends State<_OverviewScreen> {
                   label: strings.vehicleDistance,
                   value:
                       '${widget.vehicleDistanceKilometers.toStringAsFixed(1)} km',
+                ),
+                _MetricCard(
+                  label: strings.currentStreakLabel,
+                  value: strings.streakDaysValue(widget.currentStreak),
+                ),
+                _MetricCard(
+                  label: strings.bestStreakLabel,
+                  value: strings.streakDaysValue(widget.bestStreak),
                 ),
               ],
             ),
@@ -485,6 +515,8 @@ class _ProgressAndMovementScreen extends StatelessWidget {
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
     required this.vehicleDistanceKilometers,
+    required this.currentStreak,
+    required this.bestStreak,
     required this.dailySteps,
     required this.activityLabel,
     required this.stepSensorAvailable,
@@ -495,6 +527,8 @@ class _ProgressAndMovementScreen extends StatelessWidget {
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
   final double vehicleDistanceKilometers;
+  final int currentStreak;
+  final int bestStreak;
   final int dailySteps;
   final String activityLabel;
   final bool stepSensorAvailable;
@@ -534,6 +568,14 @@ class _ProgressAndMovementScreen extends StatelessWidget {
                 _MetricCard(
                   label: strings.vehicleDistance,
                   value: '${vehicleDistanceKilometers.toStringAsFixed(1)} km',
+                ),
+                _MetricCard(
+                  label: strings.currentStreakLabel,
+                  value: strings.streakDaysValue(currentStreak),
+                ),
+                _MetricCard(
+                  label: strings.bestStreakLabel,
+                  value: strings.streakDaysValue(bestStreak),
                 ),
               ],
             ),
@@ -945,12 +987,16 @@ class _HubHero extends StatelessWidget {
     required this.knownKilometers,
     required this.traveledTodayKilometers,
     required this.vehicleDistanceKilometers,
+    required this.currentStreak,
+    required this.bestStreak,
   });
 
   final String points;
   final double knownKilometers;
   final double traveledTodayKilometers;
   final double vehicleDistanceKilometers;
+  final int currentStreak;
+  final int bestStreak;
 
   @override
   Widget build(BuildContext context) {
@@ -1001,6 +1047,14 @@ class _HubHero extends StatelessWidget {
               _StatBadge(
                 label: strings.vehicleDistance,
                 value: '${vehicleDistanceKilometers.toStringAsFixed(1)} km',
+              ),
+              _StatBadge(
+                label: strings.currentStreakLabel,
+                value: strings.streakDaysValue(currentStreak),
+              ),
+              _StatBadge(
+                label: strings.bestStreakLabel,
+                value: strings.streakDaysValue(bestStreak),
               ),
             ],
           ),

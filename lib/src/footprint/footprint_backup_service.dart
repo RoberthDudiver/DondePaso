@@ -67,6 +67,10 @@ class FootprintBackupService {
       'totalVehicleDistanceMeters': state.totalVehicleDistanceMeters,
       'todayDistanceMeters': state.todayDistanceMeters,
       'todayDistanceDayKey': state.todayDistanceDayKey,
+      'currentStreak': state.currentStreak,
+      'bestStreak': state.bestStreak,
+      'streakLastDayKey': state.streakLastDayKey,
+      'radarNudgeDayKey': state.radarNudgeDayKey,
       'passiveTrackingEnabled': state.passiveTrackingEnabled,
       'trackingPreferences': <String, dynamic>{
         'profile': state.trackingPreferences.profile.storageValue,
@@ -100,6 +104,10 @@ class FootprintBackupService {
           (map['totalVehicleDistanceMeters'] as num?)?.toDouble() ?? 0,
       todayDistanceMeters: (map['todayDistanceMeters'] as num?)?.toDouble() ?? 0,
       todayDistanceDayKey: map['todayDistanceDayKey'] as String?,
+      currentStreak: (map['currentStreak'] as num?)?.toInt() ?? 0,
+      bestStreak: (map['bestStreak'] as num?)?.toInt() ?? 0,
+      streakLastDayKey: map['streakLastDayKey'] as String?,
+      radarNudgeDayKey: map['radarNudgeDayKey'] as String?,
       passiveTrackingEnabled: map['passiveTrackingEnabled'] as bool? ?? true,
       trackingPreferences: PassiveTrackingPreferences(
         profile: PassiveTrackingProfileCodec.fromStorage(

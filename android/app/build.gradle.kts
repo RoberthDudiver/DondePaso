@@ -47,3 +47,10 @@ dependencies {
 flutter {
     source = "../.."
 }
+
+val hasLocalGoogleServices = file("google-services.json").exists()
+
+if (hasLocalGoogleServices) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+}

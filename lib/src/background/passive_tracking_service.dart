@@ -16,7 +16,11 @@ import '../footprint/footprint_transport.dart';
 import '../i18n/app_strings.dart';
 
 const trackingNotificationChannelId = 'tracking_foreground';
+const radarNotificationChannelId = 'tracking_radar_nudge';
 const _trackingNotificationId = 1207;
+const _radarNotificationId = 1208;
+const _radarCoolingThreshold = Duration(hours: 18);
+const _radarCheckInterval = Duration(minutes: 45);
 
 const AndroidNotificationChannel _trackingChannel = AndroidNotificationChannel(
   trackingNotificationChannelId,
@@ -24,16 +28,24 @@ const AndroidNotificationChannel _trackingChannel = AndroidNotificationChannel(
   description: 'Foreground service for passive location tracking.',
   importance: Importance.low,
 );
+const AndroidNotificationChannel _radarChannel = AndroidNotificationChannel(
+  radarNotificationChannelId,
+  'DondePaso radar',
+  description: 'Local nudges when your exploration streak is cooling down.',
+  importance: Importance.defaultImportance,
+);
 
 final FlutterLocalNotificationsPlugin _localNotifications =
     FlutterLocalNotificationsPlugin();
 final Distance _distance = const Distance();
 StreamSubscription<Position>? _backgroundPositionSubscription;
+Timer? _radarTimer;
 LatLng? _adaptiveAnchorPoint;
 DateTime? _adaptiveAnchorAt;
 bool _usingReducedTracking = false;
 int _idleSamples = 0;
 int _movingSamples = 0;
+bool _notificationsReady = false;
 
 enum PassiveTrackingPermissionResult {
   granted,
@@ -132,16 +144,7 @@ Future<bool> isPassiveTrackingServiceRunning() async {
 }
 
 Future<void> _ensureTrackingNotificationChannel() async {
-  if (!Platform.isAndroid) {
-    return;
-  }
-
-  final androidNotifications = _localNotifications
-      .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >();
-
-  await androidNotifications?.createNotificationChannel(_trackingChannel);
+  await _ensureNotificationsReady();
 }
 
 @pragma('vm:entry-point')
@@ -156,8 +159,10 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 void passiveTrackingOnStart(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
+  await _ensureNotificationsReady();
 
   await _backgroundPositionSubscription?.cancel();
+  _radarTimer?.cancel();
   _adaptiveAnchorPoint = null;
   _adaptiveAnchorAt = null;
   _usingReducedTracking = false;
@@ -167,6 +172,8 @@ void passiveTrackingOnStart(ServiceInstance service) async {
   if (service is AndroidServiceInstance) {
     service.on('stop_service').listen((_) async {
       await _backgroundPositionSubscription?.cancel();
+      _radarTimer?.cancel();
+      await _localNotifications.cancel(_radarNotificationId);
       await FootprintProgress.flushPending();
       service.stopSelf();
     });
@@ -183,6 +190,7 @@ void passiveTrackingOnStart(ServiceInstance service) async {
 
   await _captureAndPersist(service);
   await _startBackgroundTrackingStream(service);
+  _startRadarMonitor();
 }
 
 Future<void> _captureAndPersist(ServiceInstance service) async {
@@ -251,6 +259,7 @@ Future<void> _persistPosition(ServiceInstance service, Position position) async 
     transportMode: transportMode,
     persistImmediately: false,
   );
+  await _localNotifications.cancel(_radarNotificationId);
   final strings = AppStrings.fromSystem();
   final knownKilometers = FootprintProgress.knownKilometersFor(
     snapshot.cells,
@@ -276,6 +285,54 @@ Future<void> _persistPosition(ServiceInstance service, Position position) async 
     'longitude': point.longitude,
     'trackedAt': snapshot.lastTrackedAt?.toIso8601String(),
   });
+}
+
+void _startRadarMonitor() {
+  _radarTimer?.cancel();
+  _radarTimer = Timer.periodic(_radarCheckInterval, (_) async {
+    await _maybeNotifyRadarCooling();
+  });
+  unawaited(_maybeNotifyRadarCooling());
+}
+
+Future<void> _maybeNotifyRadarCooling() async {
+  if (!Platform.isAndroid) {
+    return;
+  }
+
+  final storageState = await FootprintStorage().load();
+  final lastTrackedAt = storageState.lastTrackedAt;
+  if (lastTrackedAt == null || storageState.currentStreak <= 0) {
+    return;
+  }
+
+  final now = DateTime.now();
+  if (now.difference(lastTrackedAt) < _radarCoolingThreshold) {
+    return;
+  }
+
+  final todayKey = _dayKeyFor(now);
+  if (storageState.radarNudgeDayKey == todayKey) {
+    return;
+  }
+
+  final strings = AppStrings.fromSystem();
+  await _localNotifications.show(
+    _radarNotificationId,
+    strings.radarCoolingTitle,
+    strings.radarCoolingBody(storageState.currentStreak),
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        radarNotificationChannelId,
+        _radarChannel.name,
+        channelDescription: _radarChannel.description,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        icon: '@mipmap/ic_launcher',
+      ),
+    ),
+  );
+  await FootprintStorage().saveRadarNudgeDayKey(todayKey);
 }
 
 Future<void> _updateAdaptiveMode(
@@ -335,4 +392,34 @@ Future<void> _updateAdaptiveMode(
     _usingReducedTracking = false;
     service.invoke('refresh_stream');
   }
+}
+
+Future<void> _ensureNotificationsReady() async {
+  if (_notificationsReady) {
+    return;
+  }
+
+  const initializationSettings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(),
+  );
+  await _localNotifications.initialize(initializationSettings);
+
+  if (Platform.isAndroid) {
+    final androidNotifications = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidNotifications?.createNotificationChannel(_trackingChannel);
+    await androidNotifications?.createNotificationChannel(_radarChannel);
+  }
+
+  _notificationsReady = true;
+}
+
+String _dayKeyFor(DateTime value) {
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day';
 }

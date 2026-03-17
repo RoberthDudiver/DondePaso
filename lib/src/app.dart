@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'footprint/footprint_screen.dart';
 import 'i18n/app_strings.dart';
 import 'security/app_security_gate.dart';
+import 'telemetry/firebase_telemetry.dart';
 
 class DondePasoApp extends StatelessWidget {
   const DondePasoApp({super.key});
@@ -23,6 +24,9 @@ class DondePasoApp extends StatelessWidget {
     return MaterialApp(
       title: 'DondePaso',
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [
+        if (FirebaseTelemetry.observer != null) FirebaseTelemetry.observer!,
+      ],
       supportedLocales: const [Locale('en'), Locale('es')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

@@ -24,6 +24,8 @@ class FootprintSnapshot {
     required this.totalDistanceMeters,
     required this.totalVehicleDistanceMeters,
     required this.todayDistanceMeters,
+    required this.currentStreak,
+    required this.bestStreak,
     required this.lightMapMode,
     required this.passiveTrackingEnabled,
     required this.trackingPreferences,
@@ -37,6 +39,8 @@ class FootprintSnapshot {
   final double totalDistanceMeters;
   final double totalVehicleDistanceMeters;
   final double todayDistanceMeters;
+  final int currentStreak;
+  final int bestStreak;
   final bool lightMapMode;
   final bool passiveTrackingEnabled;
   final PassiveTrackingPreferences trackingPreferences;
@@ -90,6 +94,12 @@ class FootprintProgress {
       var todayDistanceMeters = storageState.todayDistanceDayKey == todayKey
           ? storageState.todayDistanceMeters
           : 0.0;
+      final streakUpdate = _resolveStreakUpdate(
+        previousDayKey: storageState.streakLastDayKey,
+        currentDayKey: todayKey,
+        currentStreak: storageState.currentStreak,
+        bestStreak: storageState.bestStreak,
+      );
 
       final previousPoint = storageState.lastLatLng;
       final previousTrackedAt = storageState.lastTrackedAt;
@@ -153,6 +163,10 @@ class FootprintProgress {
         totalVehicleDistanceMeters: totalVehicleDistanceMeters,
         todayDistanceMeters: todayDistanceMeters,
         todayDistanceDayKey: todayKey,
+        currentStreak: streakUpdate.currentStreak,
+        bestStreak: streakUpdate.bestStreak,
+        streakLastDayKey: streakUpdate.streakLastDayKey,
+        radarNudgeDayKey: storageState.radarNudgeDayKey,
         passiveTrackingEnabled: storageState.passiveTrackingEnabled,
         trackingPreferences: storageState.trackingPreferences,
         lastLatitude: point.latitude,
@@ -271,6 +285,10 @@ class FootprintProgress {
       todayDistanceMeters: storageState.todayDistanceMeters,
       todayDistanceDayKey:
           storageState.todayDistanceDayKey ?? _dayKeyFor(DateTime.now()),
+      currentStreak: storageState.currentStreak,
+      bestStreak: storageState.bestStreak,
+      streakLastDayKey: storageState.streakLastDayKey,
+      radarNudgeDayKey: storageState.radarNudgeDayKey,
       lastLatLng: storageState.lastLatLng,
       lastTrackedAt: storageState.lastTrackedAt,
     );
@@ -320,6 +338,8 @@ class FootprintProgress {
       totalDistanceMeters: storageState.totalDistanceMeters,
       totalVehicleDistanceMeters: storageState.totalVehicleDistanceMeters,
       todayDistanceMeters: _todayDistanceMetersFor(storageState, now),
+      currentStreak: storageState.currentStreak,
+      bestStreak: storageState.bestStreak,
       lightMapMode: storageState.lightMapMode,
       passiveTrackingEnabled: storageState.passiveTrackingEnabled,
       trackingPreferences: storageState.trackingPreferences,
@@ -344,4 +364,54 @@ class FootprintProgress {
         ? storageState.todayDistanceMeters
         : 0;
   }
+
+  static _StreakUpdate _resolveStreakUpdate({
+    required String? previousDayKey,
+    required String currentDayKey,
+    required int currentStreak,
+    required int bestStreak,
+  }) {
+    if (previousDayKey == currentDayKey) {
+      return _StreakUpdate(
+        currentStreak: currentStreak,
+        bestStreak: bestStreak,
+        streakLastDayKey: previousDayKey,
+      );
+    }
+
+    final daysBetween = previousDayKey == null
+        ? null
+        : _daysBetweenDayKeys(previousDayKey, currentDayKey);
+    final nextCurrentStreak = switch (daysBetween) {
+      null => 1,
+      0 => currentStreak,
+      1 => currentStreak + 1,
+      _ => 1,
+    };
+    final nextBestStreak = math.max(bestStreak, nextCurrentStreak);
+
+    return _StreakUpdate(
+      currentStreak: nextCurrentStreak,
+      bestStreak: nextBestStreak,
+      streakLastDayKey: currentDayKey,
+    );
+  }
+
+  static int _daysBetweenDayKeys(String previousDayKey, String currentDayKey) {
+    final previous = DateTime.parse(previousDayKey);
+    final current = DateTime.parse(currentDayKey);
+    return current.difference(previous).inDays;
+  }
+}
+
+class _StreakUpdate {
+  const _StreakUpdate({
+    required this.currentStreak,
+    required this.bestStreak,
+    required this.streakLastDayKey,
+  });
+
+  final int currentStreak;
+  final int bestStreak;
+  final String? streakLastDayKey;
 }

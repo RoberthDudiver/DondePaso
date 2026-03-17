@@ -14,7 +14,13 @@ const double footprintBlockRenderRadiusMeters = 520;
 const double _blockBoundaryToleranceMeters = 12;
 const double _minimumBlockAreaMeters = 180;
 const double _maximumBlockAreaMeters = 52000;
-const double _blockActivationCoverageThreshold = 0.96;
+const double _blockActivationCoverageThreshold = 0.74;
+const double _blockRenderCoverageThreshold = 0.86;
+const double _blockCurrentSideTouchThreshold = 0.45;
+const double _blockRecentSideTouchThreshold = 0.72;
+const double _blockRenderRecentSideThreshold = 0.60;
+const double _sideAngleToleranceDegrees = 24;
+const Duration _blockRecentActivationWindow = Duration(hours: 3);
 
 final Distance _blockDistance = const Distance();
 
@@ -76,7 +82,7 @@ class FootprintBlocks {
     );
     final refreshedSegments = await storage.loadSegmentsByIds(segmentIds);
 
-    final activatedBlocks = <String>{};
+    final activationCandidates = <_BlockActivationCandidate>[];
     for (final block in nearbyBlocks) {
       if (!block.segmentIds.any(touchedSegmentIds.contains)) {
         continue;
@@ -87,14 +93,34 @@ class FootprintBlocks {
         refreshedSegments,
         at,
       );
-      if (coverage >= _blockActivationCoverageThreshold) {
-        activatedBlocks.add(block.id);
+      final currentSideTouchRatio = _sideTouchRatio(
+        block,
+        refreshedSegments,
+        (segment) => touchedSegmentIds.contains(segment.id),
+      );
+      if (coverage >= _blockActivationCoverageThreshold &&
+          currentSideTouchRatio >= _blockCurrentSideTouchThreshold) {
+        activationCandidates.add(
+          _BlockActivationCandidate(
+            block: block,
+            coverage: coverage,
+            currentSideTouchRatio: currentSideTouchRatio,
+          ),
+        );
       }
     }
 
-    if (activatedBlocks.isNotEmpty) {
+    if (activationCandidates.isNotEmpty) {
+      activationCandidates.sort((left, right) {
+        final scoreComparison = right.score.compareTo(left.score);
+        if (scoreComparison != 0) {
+          return scoreComparison;
+        }
+        return left.block.areaSquareMeters.compareTo(right.block.areaSquareMeters);
+      });
+      final best = activationCandidates.first;
       await storage.activateBlocks(
-        activatedBlocks,
+        <String>{best.block.id},
         at: at,
         transportMode: transportMode,
       );
@@ -106,7 +132,7 @@ class FootprintBlocks {
     required DateTime now,
   }) async {
     final storage = FootprintStorage();
-    final blocks = await storage.loadBlocksNear(
+    var blocks = await storage.loadBlocksNear(
       center: center,
       radiusMeters: footprintBlockRenderRadiusMeters,
     );
@@ -116,6 +142,53 @@ class FootprintBlocks {
 
     final allSegmentIds = blocks.expand((block) => block.segmentIds).toSet();
     final segments = await storage.loadSegmentsByIds(allSegmentIds);
+
+    final pendingCandidates = <_BlockActivationCandidate>[];
+    for (final block in blocks) {
+      if (block.lastSeen != null) {
+        continue;
+      }
+      final coverage = _coverageForBlock(block, segments, now);
+      final recentSideTouchRatio = _sideTouchRatio(
+        block,
+        segments,
+        (segment) {
+          final lastSeen = segment.lastSeen;
+          return lastSeen != null &&
+              now.difference(lastSeen) <= _blockRecentActivationWindow;
+        },
+      );
+      if (coverage >= _blockActivationCoverageThreshold &&
+          recentSideTouchRatio >= _blockRecentSideTouchThreshold) {
+        pendingCandidates.add(
+          _BlockActivationCandidate(
+            block: block,
+            coverage: coverage,
+            currentSideTouchRatio: recentSideTouchRatio,
+          ),
+        );
+      }
+    }
+
+    if (pendingCandidates.isNotEmpty) {
+      pendingCandidates.sort((left, right) {
+        final scoreComparison = right.score.compareTo(left.score);
+        if (scoreComparison != 0) {
+          return scoreComparison;
+        }
+        return left.block.areaSquareMeters.compareTo(right.block.areaSquareMeters);
+      });
+      final best = pendingCandidates.first;
+      await storage.activateBlocks(
+        <String>{best.block.id},
+        at: now,
+        transportMode: _dominantTransportForBlock(best.block, segments),
+      );
+      blocks = await storage.loadBlocksNear(
+        center: center,
+        radiusMeters: footprintBlockRenderRadiusMeters,
+      );
+    }
 
     final snapshots = <CapturedBlockSnapshot>[];
     for (final block in blocks) {
@@ -130,6 +203,23 @@ class FootprintBlocks {
       if (freshness <= 0) {
         continue;
       }
+      final coverageRatio = _coverageForBlock(block, segments, now);
+      final recentSideTouchRatio = _sideTouchRatio(
+        block,
+        segments,
+        (segment) {
+          final lastSeen = segment.lastSeen;
+          return lastSeen != null &&
+              now.difference(lastSeen) <= _blockRecentActivationWindow;
+        },
+      );
+      final hasStrongRecentEvidence =
+          recentSideTouchRatio >= _blockRenderRecentSideThreshold;
+      if (block.visits < 2 &&
+          coverageRatio < _blockRenderCoverageThreshold &&
+          !hasStrongRecentEvidence) {
+        continue;
+      }
 
       snapshots.add(
         CapturedBlockSnapshot(
@@ -137,7 +227,7 @@ class FootprintBlocks {
           points: block.points,
           center: block.center,
           areaSquareMeters: block.areaSquareMeters,
-          coverageRatio: _coverageForBlock(block, segments, now),
+          coverageRatio: coverageRatio,
           visits: block.visits,
           transportMode: block.dominantTransport,
           lastSeen: block.lastSeen,
@@ -196,6 +286,8 @@ class FootprintBlocks {
             end: segment.end,
             midpoint: segment.midpoint,
             visits: existing.visits,
+            walkingVisits: existing.walkingVisits,
+            vehicleVisits: existing.vehicleVisits,
             lastSeen: existing.lastSeen,
           );
         })
@@ -214,6 +306,8 @@ class FootprintBlocks {
             center: block.center,
             areaSquareMeters: block.areaSquareMeters,
             visits: existing.visits,
+            walkingVisits: existing.walkingVisits,
+            vehicleVisits: existing.vehicleVisits,
             lastSeen: existing.lastSeen,
           );
         })
@@ -391,32 +485,163 @@ out geom;
     Map<String, FootprintRoadSegment> segments,
     DateTime now,
   ) {
-    if (block.segmentIds.isEmpty) {
+    final sideGroups = _groupBlockSides(block, segments);
+    if (sideGroups.isEmpty) {
       return 0;
     }
 
     var weightedCoverage = 0.0;
-    var counted = 0;
-    for (final segmentId in block.segmentIds) {
-      final segment = segments[segmentId];
+    for (final side in sideGroups) {
+      var sideCoverage = 0.0;
+      for (final segment in side.segments) {
+        final lastSeen = segment.lastSeen;
+        if (lastSeen == null) {
+          continue;
+        }
+        final freshness =
+            1 -
+            (now.difference(lastSeen).inSeconds / footprintForgetAfter.inSeconds);
+        sideCoverage += freshness.clamp(0, 1).toDouble();
+      }
+      weightedCoverage += sideCoverage / side.segments.length;
+    }
+    return (weightedCoverage / sideGroups.length).clamp(0, 1).toDouble();
+  }
+
+  static FootprintTransportMode _dominantTransportForBlock(
+    FootprintBlockRecord block,
+    Map<String, FootprintRoadSegment> segments,
+  ) {
+    var walking = 0;
+    var vehicle = 0;
+    for (final id in block.segmentIds) {
+      final segment = segments[id];
       if (segment == null) {
         continue;
       }
-      counted += 1;
-      final lastSeen = segment.lastSeen;
-      if (lastSeen == null) {
-        continue;
-      }
-      final freshness =
-          1 -
-          (now.difference(lastSeen).inSeconds / footprintForgetAfter.inSeconds);
-      weightedCoverage += freshness.clamp(0, 1).toDouble();
+      walking += segment.walkingVisits;
+      vehicle += segment.vehicleVisits;
     }
+    if (vehicle > walking && vehicle > 0) {
+      return FootprintTransportMode.vehicle;
+    }
+    if (walking > 0) {
+      return FootprintTransportMode.walking;
+    }
+    return FootprintTransportMode.unknown;
+  }
 
-    if (counted == 0) {
+  static double _sideTouchRatio(
+    FootprintBlockRecord block,
+    Map<String, FootprintRoadSegment> segments,
+    bool Function(FootprintRoadSegment segment) matcher,
+  ) {
+    final sideGroups = _groupBlockSides(block, segments);
+    if (sideGroups.isEmpty) {
       return 0;
     }
-    return (weightedCoverage / counted).clamp(0, 1).toDouble();
+
+    final touchedSides = sideGroups.where(
+      (side) => side.segments.any(matcher),
+    );
+    return (touchedSides.length / sideGroups.length).clamp(0, 1).toDouble();
+  }
+
+  static List<_BlockSideGroup> _groupBlockSides(
+    FootprintBlockRecord block,
+    Map<String, FootprintRoadSegment> segments,
+  ) {
+    final availableSegments = block.segmentIds
+        .map((id) => segments[id])
+        .whereType<FootprintRoadSegment>()
+        .toList(growable: false);
+    if (availableSegments.isEmpty) {
+      return const [];
+    }
+    if (availableSegments.length <= 2) {
+      return availableSegments
+          .map((segment) => _BlockSideGroup(<FootprintRoadSegment>[segment]))
+          .toList(growable: false);
+    }
+
+    final parent = <String, String>{
+      for (final segment in availableSegments) segment.id: segment.id,
+    };
+
+    String find(String id) {
+      final current = parent[id]!;
+      if (current == id) {
+        return id;
+      }
+      final root = find(current);
+      parent[id] = root;
+      return root;
+    }
+
+    void unite(String a, String b) {
+      final rootA = find(a);
+      final rootB = find(b);
+      if (rootA != rootB) {
+        parent[rootB] = rootA;
+      }
+    }
+
+    for (var i = 0; i < availableSegments.length; i++) {
+      final left = availableSegments[i];
+      for (var j = i + 1; j < availableSegments.length; j++) {
+        final right = availableSegments[j];
+        if (!_segmentsShareEndpoint(left, right)) {
+          continue;
+        }
+        if (_segmentAngleDifferenceDegrees(left, right) >
+            _sideAngleToleranceDegrees) {
+          continue;
+        }
+        unite(left.id, right.id);
+      }
+    }
+
+    final grouped = <String, List<FootprintRoadSegment>>{};
+    for (final segment in availableSegments) {
+      grouped.putIfAbsent(find(segment.id), () => <FootprintRoadSegment>[]).add(segment);
+    }
+
+    return grouped.values
+        .map((segments) => _BlockSideGroup(segments))
+        .toList(growable: false);
+  }
+
+  static bool _segmentsShareEndpoint(
+    FootprintRoadSegment left,
+    FootprintRoadSegment right,
+  ) {
+    final leftStart = _nodeKey(left.start);
+    final leftEnd = _nodeKey(left.end);
+    final rightStart = _nodeKey(right.start);
+    final rightEnd = _nodeKey(right.end);
+    return leftStart == rightStart ||
+        leftStart == rightEnd ||
+        leftEnd == rightStart ||
+        leftEnd == rightEnd;
+  }
+
+  static double _segmentAngleDifferenceDegrees(
+    FootprintRoadSegment left,
+    FootprintRoadSegment right,
+  ) {
+    final leftAngle = _normalizedSegmentAngle(left.start, left.end);
+    final rightAngle = _normalizedSegmentAngle(right.start, right.end);
+    final delta = (leftAngle - rightAngle).abs();
+    final wrapped = math.min(delta, math.pi - delta);
+    return wrapped * 180 / math.pi;
+  }
+
+  static double _normalizedSegmentAngle(LatLng start, LatLng end) {
+    final angle = math.atan2(
+      end.latitude - start.latitude,
+      end.longitude - start.longitude,
+    );
+    return angle < 0 ? angle + math.pi : angle;
   }
 
   static bool _touchesFetchBoundary(
@@ -537,6 +762,26 @@ class _DownloadedBlockNetwork {
 
   final List<FootprintRoadSegment> segments;
   final List<FootprintBlockRecord> blocks;
+}
+
+class _BlockSideGroup {
+  const _BlockSideGroup(this.segments);
+
+  final List<FootprintRoadSegment> segments;
+}
+
+class _BlockActivationCandidate {
+  const _BlockActivationCandidate({
+    required this.block,
+    required this.coverage,
+    required this.currentSideTouchRatio,
+  });
+
+  final FootprintBlockRecord block;
+  final double coverage;
+  final double currentSideTouchRatio;
+
+  double get score => (coverage * 0.72) + (currentSideTouchRatio * 0.28);
 }
 
 class _RoadGraph {

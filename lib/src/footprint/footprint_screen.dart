@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/rendering.dart';
 
 import '../activity/daily_activity_tracker.dart';
 import '../background/passive_tracking_service.dart';
@@ -19,6 +24,7 @@ import 'footprint_fog_layer.dart';
 import 'footprint_progress.dart';
 import 'footprint_progression.dart';
 import 'footprint_storage.dart';
+import 'footprint_timelapse_service.dart';
 import 'footprint_transport.dart';
 import 'footprint_zones.dart';
 import 'settings_screen.dart';
@@ -38,6 +44,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
   final MapController _mapController = MapController();
   final DailyActivityTracker _activityTracker = DailyActivityTracker();
   final ZoneNameService _zoneNameService = ZoneNameService();
+  final GlobalKey _shareCardKey = GlobalKey();
 
   StreamSubscription<Map<String, dynamic>?>? _serviceSubscription;
   StreamSubscription<Position>? _positionSubscription;
@@ -52,6 +59,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
   bool _lightMapMode = false;
 
   int _totalPoints = 0;
+  int _currentStreak = 0;
+  int _bestStreak = 0;
   double _todayDistanceKilometers = 0;
   double _totalDistanceKilometers = 0;
   double _vehicleDistanceKilometers = 0;
@@ -107,16 +116,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
   void _onActivityChanged() {
     if (mounted) {
       setState(() {
-        _progression = FootprintProgression.build(
-          strings: AppStrings.of(context),
-          totalPoints: _totalPoints,
-          knownKilometers: _knownKilometers,
-          traveledTodayKilometers: _todayDistanceKilometers,
-          totalDistanceKilometers: _totalDistanceKilometers,
-          vehicleKilometers: _vehicleDistanceKilometers,
-          dailySteps: _activityTracker.dailySteps,
-          zonesSnapshot: _zonesSnapshot,
-        );
+        _progression = _buildProgressionSnapshot();
       });
     }
   }
@@ -174,29 +174,15 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _vehicleDistanceKilometers = FootprintProgress.vehicleDistanceKilometersFor(
         snapshot,
       );
+      _currentStreak = snapshot.currentStreak;
+      _bestStreak = snapshot.bestStreak;
       _trackingPreferences = snapshot.trackingPreferences;
       _lightMapMode = snapshot.lightMapMode;
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _currentLocation = snapshot.lastLatLng;
       _lastTrackedAt = snapshot.lastTrackedAt;
       _zonesSnapshot = zonesSnapshot;
-      _progression = FootprintProgression.build(
-        strings: AppStrings.of(context),
-        totalPoints: snapshot.totalPoints,
-        knownKilometers: FootprintProgress.knownKilometersFor(
-          snapshot.cells,
-          DateTime.now(),
-        ),
-        traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
-        totalDistanceKilometers: FootprintProgress.totalDistanceKilometersFor(
-          snapshot,
-        ),
-        vehicleKilometers: FootprintProgress.vehicleDistanceKilometersFor(
-          snapshot,
-        ),
-        dailySteps: _activityTracker.dailySteps,
-        zonesSnapshot: zonesSnapshot,
-      );
+      _progression = _buildProgressionSnapshot();
     });
 
     unawaited(_loadZoneNames(zonesSnapshot));
@@ -301,27 +287,13 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _vehicleDistanceKilometers = FootprintProgress.vehicleDistanceKilometersFor(
         snapshot,
       );
+      _currentStreak = snapshot.currentStreak;
+      _bestStreak = snapshot.bestStreak;
       _currentLocation = point;
       _lastTrackedAt = snapshot.lastTrackedAt;
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _zonesSnapshot = zonesSnapshot;
-      _progression = FootprintProgression.build(
-        strings: AppStrings.of(context),
-        totalPoints: snapshot.totalPoints,
-        knownKilometers: FootprintProgress.knownKilometersFor(
-          snapshot.cells,
-          DateTime.now(),
-        ),
-        traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
-        totalDistanceKilometers: FootprintProgress.totalDistanceKilometersFor(
-          snapshot,
-        ),
-        vehicleKilometers: FootprintProgress.vehicleDistanceKilometersFor(
-          snapshot,
-        ),
-        dailySteps: _activityTracker.dailySteps,
-        zonesSnapshot: zonesSnapshot,
-      );
+      _progression = _buildProgressionSnapshot();
     });
 
     unawaited(_loadZoneNames(zonesSnapshot));
@@ -647,6 +619,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
     setState(() {
       _cells = const [];
       _totalPoints = 0;
+      _currentStreak = 0;
+      _bestStreak = 0;
       _totalDistanceKilometers = 0;
       _vehicleDistanceKilometers = 0;
       _lightMapMode = false;
@@ -671,6 +645,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
             traveledTodayKilometers: _todayDistanceKilometers,
             totalDistanceKilometers: _totalDistanceKilometers,
             vehicleDistanceKilometers: _vehicleDistanceKilometers,
+            currentStreak: _currentStreak,
+            bestStreak: _bestStreak,
             dailySteps: _activityTracker.dailySteps,
             activityLabel: _activityLabel(strings),
             stepSensorAvailable: _activityTracker.sensorAvailable,
@@ -721,7 +697,160 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
     setState(() {
       _zoneNames.addAll(resolved);
+      _progression = _buildProgressionSnapshot();
     });
+  }
+
+  Future<void> _shareMapCard() async {
+    final strings = context.strings;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      final renderObject =
+          _shareCardKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (renderObject == null) {
+        _showMessage(strings.shareMapError);
+        return;
+      }
+
+      final image = await renderObject.toImage(pixelRatio: 3);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        _showMessage(strings.shareMapError);
+        return;
+      }
+
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}dondepaso_share_card.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      final primaryZoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
+      final explorationPercent = (_cityExplorationRatio * 100).round();
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/png')],
+          text: strings.shareMapBody(primaryZoneName, explorationPercent),
+          title: strings.shareMapTitle,
+        ),
+      );
+    } catch (_) {
+      _showMessage(strings.shareMapError);
+    }
+  }
+
+  Future<void> _shareTimelapse() async {
+    final strings = context.strings;
+    final zoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
+    final explorationPercent = (_cityExplorationRatio * 100).round();
+
+    if (!mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(strings.shareTimelapseLoading)),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      await FootprintTimelapseService.generateAndShare(
+        strings: strings,
+        cells: _cells,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: _totalPoints,
+        knownKilometers: _knownKilometers,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showMessage(strings.shareTimelapseError);
+      }
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  Future<void> _openShareOptions() async {
+    final strings = context.strings;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0A0B0E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.shareOptionsTitle,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: Text(strings.shareCardOption),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _shareMapCard();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.movie_creation_outlined),
+                  title: Text(strings.shareTimelapseOption),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _shareTimelapse();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  ProgressionSnapshot _buildProgressionSnapshot() {
+    return FootprintProgression.build(
+      strings: AppStrings.of(context),
+      totalPoints: _totalPoints,
+      knownKilometers: _knownKilometers,
+      traveledTodayKilometers: _todayDistanceKilometers,
+      totalDistanceKilometers: _totalDistanceKilometers,
+      vehicleKilometers: _vehicleDistanceKilometers,
+      currentStreak: _currentStreak,
+      bestStreak: _bestStreak,
+      dailySteps: _activityTracker.dailySteps,
+      zonesSnapshot: _zonesSnapshot,
+      zoneDisplayNames: _zoneNames,
+    );
   }
 
   String _displayZoneTitle(FootprintZone? zone, AppStrings strings) {
@@ -1101,19 +1230,21 @@ class _FootprintScreenState extends State<FootprintScreen> {
     final explorationPercent = (_cityExplorationRatio * 100).round();
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF050608), Color(0xFF0A0C10), Color(0xFF040505)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: RepaintBoundary(
+        key: _shareCardKey,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF050608), Color(0xFF0A0C10), Color(0xFF040505)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
-              ),
-              child: Stack(
-                children: [
+                child: Stack(
+                  children: [
                   Positioned.fill(
                     child: FlutterMap(
                       mapController: _mapController,
@@ -1204,40 +1335,46 @@ class _FootprintScreenState extends State<FootprintScreen> {
                       ],
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      _GlassIconButton(
-                        icon: Icons.menu_rounded,
-                        onPressed: _openSettingsScreen,
-                        darkMode: _lightMapMode,
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            strings.appTitle,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        _GlassIconButton(
+                          icon: Icons.menu_rounded,
+                          onPressed: _openSettingsScreen,
+                          darkMode: _lightMapMode,
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              strings.appTitle,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
                           ),
                         ),
-                      ),
-                      _GlassIconButton(
-                        icon: _isLocating
-                            ? Icons.hourglass_top_rounded
-                            : Icons.my_location_rounded,
-                        onPressed: _centerOnCurrentLocation,
-                        darkMode: _lightMapMode,
-                      ),
-                    ],
-                  ),
+                        _GlassIconButton(
+                          icon: Icons.ios_share_rounded,
+                          onPressed: _openShareOptions,
+                          darkMode: _lightMapMode,
+                        ),
+                        const SizedBox(width: 8),
+                        _GlassIconButton(
+                          icon: _isLocating
+                              ? Icons.hourglass_top_rounded
+                              : Icons.my_location_rounded,
+                          onPressed: _centerOnCurrentLocation,
+                          darkMode: _lightMapMode,
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 18),
                   if (_needsAlwaysPermission) ...[
                     _AlwaysPermissionBanner(
@@ -1367,6 +1504,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
                                   _totalDistanceKilometers,
                               vehicleDistanceKilometers:
                                   _vehicleDistanceKilometers,
+                              currentStreak: _currentStreak,
+                              bestStreak: _bestStreak,
                               dailySteps: _activityTracker.dailySteps,
                               activityLabel: _activityLabel(strings),
                               stepSensorAvailable:
@@ -1400,24 +1539,25 @@ class _FootprintScreenState extends State<FootprintScreen> {
                         ),
                       ),
                     ),
-                ],
-              ),
-            ),
-          ),
-          if (_isBooting)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Color(0xEE030303),
-                child: Center(
-                  child: CircularProgressIndicator(color: Color(0xFFFFD37B)),
+                  ],
                 ),
               ),
             ),
-          if (!_isBooting && !_hasSeenOnboarding)
-            Positioned.fill(
-              child: _OnboardingOverlay(onStart: _activatePassiveTracking),
-            ),
-        ],
+            if (_isBooting)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0xEE030303),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Color(0xFFFFD37B)),
+                  ),
+                ),
+              ),
+            if (!_isBooting && !_hasSeenOnboarding)
+              Positioned.fill(
+                child: _OnboardingOverlay(onStart: _activatePassiveTracking),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -26,6 +26,10 @@ class FootprintStorageState {
     required this.totalVehicleDistanceMeters,
     required this.todayDistanceMeters,
     required this.todayDistanceDayKey,
+    required this.currentStreak,
+    required this.bestStreak,
+    required this.streakLastDayKey,
+    required this.radarNudgeDayKey,
     required this.passiveTrackingEnabled,
     required this.trackingPreferences,
     required this.lastLatitude,
@@ -42,6 +46,10 @@ class FootprintStorageState {
   final double totalVehicleDistanceMeters;
   final double todayDistanceMeters;
   final String? todayDistanceDayKey;
+  final int currentStreak;
+  final int bestStreak;
+  final String? streakLastDayKey;
+  final String? radarNudgeDayKey;
   final bool passiveTrackingEnabled;
   final PassiveTrackingPreferences trackingPreferences;
   final double? lastLatitude;
@@ -69,6 +77,10 @@ class FootprintStorageState {
     double? totalVehicleDistanceMeters,
     double? todayDistanceMeters,
     String? todayDistanceDayKey,
+    int? currentStreak,
+    int? bestStreak,
+    String? streakLastDayKey,
+    String? radarNudgeDayKey,
     bool? passiveTrackingEnabled,
     PassiveTrackingPreferences? trackingPreferences,
     double? lastLatitude,
@@ -86,6 +98,10 @@ class FootprintStorageState {
           totalVehicleDistanceMeters ?? this.totalVehicleDistanceMeters,
       todayDistanceMeters: todayDistanceMeters ?? this.todayDistanceMeters,
       todayDistanceDayKey: todayDistanceDayKey ?? this.todayDistanceDayKey,
+      currentStreak: currentStreak ?? this.currentStreak,
+      bestStreak: bestStreak ?? this.bestStreak,
+      streakLastDayKey: streakLastDayKey ?? this.streakLastDayKey,
+      radarNudgeDayKey: radarNudgeDayKey ?? this.radarNudgeDayKey,
       passiveTrackingEnabled:
           passiveTrackingEnabled ?? this.passiveTrackingEnabled,
       trackingPreferences: trackingPreferences ?? this.trackingPreferences,
@@ -107,6 +123,10 @@ class FootprintStorage {
       'footprint_total_vehicle_distance_meters';
   static const _todayDistanceMetersKey = 'footprint_today_distance_meters';
   static const _todayDistanceDayKey = 'footprint_today_distance_day_key';
+  static const _streakCountKey = 'footprint_streak_count';
+  static const _bestStreakKey = 'footprint_best_streak';
+  static const _streakLastDayKey = 'footprint_streak_last_day_key';
+  static const _radarNudgeDayKey = 'footprint_radar_nudge_day_key';
   static const _passiveTrackingEnabledKey = 'footprint_passive_tracking';
   static const _trackingProfileKey = 'footprint_tracking_profile';
   static const _trackingCustomDistanceKey =
@@ -148,6 +168,10 @@ class FootprintStorage {
     required double totalVehicleDistanceMeters,
     required double todayDistanceMeters,
     required String todayDistanceDayKey,
+    required int currentStreak,
+    required int bestStreak,
+    required String? streakLastDayKey,
+    required String? radarNudgeDayKey,
     required LatLng? lastLatLng,
     required DateTime? lastTrackedAt,
   }) async {
@@ -160,10 +184,14 @@ class FootprintStorage {
         txn,
         _totalVehicleDistanceMetersKey,
         totalVehicleDistanceMeters,
-      );
-      await _writeMeta(txn, _todayDistanceMetersKey, todayDistanceMeters);
-      await _writeMeta(txn, _todayDistanceDayKey, todayDistanceDayKey);
-      await _writeMeta(txn, _lastLatitudeKey, lastLatLng?.latitude);
+        );
+        await _writeMeta(txn, _todayDistanceMetersKey, todayDistanceMeters);
+        await _writeMeta(txn, _todayDistanceDayKey, todayDistanceDayKey);
+        await _writeMeta(txn, _streakCountKey, currentStreak);
+        await _writeMeta(txn, _bestStreakKey, bestStreak);
+        await _writeMeta(txn, _streakLastDayKey, streakLastDayKey);
+        await _writeMeta(txn, _radarNudgeDayKey, radarNudgeDayKey);
+        await _writeMeta(txn, _lastLatitudeKey, lastLatLng?.latitude);
       await _writeMeta(txn, _lastLongitudeKey, lastLatLng?.longitude);
       await _writeMeta(txn, _lastTrackedAtKey, lastTrackedAt?.toIso8601String());
     });
@@ -190,6 +218,10 @@ class FootprintStorage {
       );
       await _writeMeta(txn, _todayDistanceMetersKey, state.todayDistanceMeters);
       await _writeMeta(txn, _todayDistanceDayKey, state.todayDistanceDayKey);
+      await _writeMeta(txn, _streakCountKey, state.currentStreak);
+      await _writeMeta(txn, _bestStreakKey, state.bestStreak);
+      await _writeMeta(txn, _streakLastDayKey, state.streakLastDayKey);
+      await _writeMeta(txn, _radarNudgeDayKey, state.radarNudgeDayKey);
       await _writeMeta(
         txn,
         _passiveTrackingEnabledKey,
@@ -247,6 +279,11 @@ class FootprintStorage {
     await _writeMeta(db, _passiveTrackingEnabledKey, enabled);
   }
 
+  Future<void> saveRadarNudgeDayKey(String? dayKey) async {
+    final db = await _database();
+    await _writeMeta(db, _radarNudgeDayKey, dayKey);
+  }
+
   Future<void> saveTrackingPreferences(
     PassiveTrackingPreferences preferences,
   ) async {
@@ -290,6 +327,10 @@ class FootprintStorage {
     await prefs.remove(_totalVehicleDistanceMetersKey);
     await prefs.remove(_todayDistanceMetersKey);
     await prefs.remove(_todayDistanceDayKey);
+    await prefs.remove(_streakCountKey);
+    await prefs.remove(_bestStreakKey);
+    await prefs.remove(_streakLastDayKey);
+    await prefs.remove(_radarNudgeDayKey);
     await prefs.remove(_passiveTrackingEnabledKey);
     await prefs.remove(_trackingProfileKey);
     await prefs.remove(_trackingCustomDistanceKey);
@@ -666,6 +707,10 @@ class FootprintStorage {
           prefs.getDouble(_totalVehicleDistanceMetersKey) ?? 0,
       todayDistanceMeters: prefs.getDouble(_todayDistanceMetersKey) ?? 0,
       todayDistanceDayKey: prefs.getString(_todayDistanceDayKey),
+      currentStreak: prefs.getInt(_streakCountKey) ?? 0,
+      bestStreak: prefs.getInt(_bestStreakKey) ?? 0,
+      streakLastDayKey: prefs.getString(_streakLastDayKey),
+      radarNudgeDayKey: prefs.getString(_radarNudgeDayKey),
       passiveTrackingEnabled: prefs.getBool(_passiveTrackingEnabledKey) ?? true,
       trackingPreferences: PassiveTrackingPreferences(
         profile: PassiveTrackingProfileCodec.fromStorage(
@@ -717,6 +762,10 @@ class FootprintStorage {
       ),
       todayDistanceMeters: _doubleValue(meta[_todayDistanceMetersKey], fallback: 0),
       todayDistanceDayKey: meta[_todayDistanceDayKey],
+      currentStreak: _intValue(meta[_streakCountKey], fallback: 0),
+      bestStreak: _intValue(meta[_bestStreakKey], fallback: 0),
+      streakLastDayKey: meta[_streakLastDayKey],
+      radarNudgeDayKey: meta[_radarNudgeDayKey],
       passiveTrackingEnabled: _boolValue(
         meta[_passiveTrackingEnabledKey],
         fallback: true,

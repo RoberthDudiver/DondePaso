@@ -56,3 +56,5 @@ key.properties
 google-services.json
 GoogleService-Info.plist
 firebase.json
+lib/firebase_options.dart
+firebase.local.json

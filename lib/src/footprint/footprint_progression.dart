@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../i18n/app_strings.dart';
 import 'footprint_zones.dart';
+import 'zone_name_service.dart';
 
 class ProgressionAchievement {
   const ProgressionAchievement({
@@ -46,8 +47,11 @@ class FootprintProgression {
     required double traveledTodayKilometers,
     required double totalDistanceKilometers,
     required double vehicleKilometers,
+    required int currentStreak,
+    required int bestStreak,
     required int dailySteps,
     required FootprintZonesSnapshot zonesSnapshot,
+    Map<String, String> zoneDisplayNames = const {},
   }) {
     final level = _levelFor(totalPoints);
     final title = _titleFor(strings, level);
@@ -162,9 +166,26 @@ class FootprintProgression {
           vehicleKilometers,
           Icons.public_rounded,
         ),
+        _streakMilestone(strings, 3, bestStreak, Icons.radar_rounded),
+        _streakMilestone(strings, 7, bestStreak, Icons.local_fire_department_rounded),
+        _streakMilestone(strings, 14, bestStreak, Icons.whatshot_rounded),
+        _streakMilestone(strings, 30, bestStreak, Icons.bolt_rounded),
+        _streakMilestone(strings, 60, bestStreak, Icons.workspace_premium_rounded),
+        _streakMilestone(strings, 120, bestStreak, Icons.shield_moon_rounded),
         _zoneMilestone(strings, 3, zoneCount, Icons.place_rounded),
         _zoneMilestone(strings, 6, zoneCount, Icons.travel_explore_rounded),
         _zoneMilestone(strings, 10, zoneCount, Icons.map_rounded),
+        ..._localZoneAchievements(
+          strings: strings,
+          zonesSnapshot: zonesSnapshot,
+          zoneDisplayNames: zoneDisplayNames,
+        ),
+        ProgressionAchievement(
+          title: strings.currentStreakLabel,
+          description: strings.streakDaysValue(currentStreak),
+          icon: Icons.radar_rounded,
+          unlocked: currentStreak > 0,
+        ),
       ],
     );
   }
@@ -314,5 +335,62 @@ class FootprintProgression {
       icon: icon,
       unlocked: vehicleKilometers >= kilometers,
     );
+  }
+
+  static ProgressionAchievement _streakMilestone(
+    AppStrings strings,
+    int days,
+    int bestStreak,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementStreakTitle(days),
+      description: strings.achievementStreakBody(days),
+      icon: icon,
+      unlocked: bestStreak >= days,
+    );
+  }
+
+  static List<ProgressionAchievement> _localZoneAchievements({
+    required AppStrings strings,
+    required FootprintZonesSnapshot zonesSnapshot,
+    required Map<String, String> zoneDisplayNames,
+  }) {
+    final candidates = zonesSnapshot.zones
+        .map((zone) {
+          final resolved = (zoneDisplayNames[zone.zoneKey] ?? zone.title).trim();
+          if (resolved.isEmpty ||
+              ZoneNameService.looksTechnicalZoneTitle(resolved)) {
+            return null;
+          }
+          return (zone: zone, name: resolved);
+        })
+        .whereType<({FootprintZone zone, String name})>()
+        .toList(growable: false);
+
+    final achievements = <ProgressionAchievement>[];
+    for (final candidate in candidates.take(3)) {
+      achievements.addAll([
+        ProgressionAchievement(
+          title: strings.achievementLocalZoneTitle(candidate.name, 35),
+          description: strings.achievementLocalZoneBody(candidate.name, 35),
+          icon: Icons.place_rounded,
+          unlocked: candidate.zone.discoveredRatio >= 0.35,
+        ),
+        ProgressionAchievement(
+          title: strings.achievementLocalZoneTitle(candidate.name, 60),
+          description: strings.achievementLocalZoneBody(candidate.name, 60),
+          icon: Icons.map_rounded,
+          unlocked: candidate.zone.discoveredRatio >= 0.60,
+        ),
+        ProgressionAchievement(
+          title: strings.achievementLocalZoneFullTitle(candidate.name),
+          description: strings.achievementLocalZoneFullBody(candidate.name),
+          icon: Icons.workspace_premium_rounded,
+          unlocked: candidate.zone.discoveredRatio >= 0.90,
+        ),
+      ]);
+    }
+    return achievements;
   }
 }
