@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -6,6 +7,7 @@ import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -29,6 +31,7 @@ class FootprintTimelapseService {
   static const double _maxTimelineDurationSeconds = 10.0;
   static const double _heroDurationSeconds = 1.6;
   static const double _holdDurationSeconds = 0.9;
+  static const int _maxMapTiles = 36;
 
   static Future<void> generateAndShare({
     required AppStrings strings,
@@ -65,10 +68,11 @@ class FootprintTimelapseService {
     }
     await workingDirectory.create(recursive: true);
     final audioTrack = await _prepareAudioTrack(workingDirectory);
+    final scene = await _buildScene(sortedCells);
 
     final frameFiles = await _renderFrames(
       strings: strings,
-      cells: sortedCells,
+      scene: scene,
       zoneName: zoneName,
       explorationPercent: explorationPercent,
       totalPoints: totalPoints,
@@ -101,11 +105,66 @@ class FootprintTimelapseService {
     if (workingDirectory.existsSync()) {
       await workingDirectory.delete(recursive: true);
     }
+    scene.dispose();
+  }
+
+  static Future<void> generateAndShareCard({
+    required AppStrings strings,
+    required List<FootprintCell> cells,
+    required String zoneName,
+    required int explorationPercent,
+    required int totalPoints,
+    required double knownKilometers,
+  }) async {
+    final h3Cells = cells.where((cell) => cell.isH3).toList(growable: false);
+    if (h3Cells.isEmpty) {
+      throw StateError('No H3 cells available for share card.');
+    }
+
+    final sortedCells = [...h3Cells]
+      ..sort((left, right) => left.lastSeen.compareTo(right.lastSeen));
+    final scene = await _buildScene(sortedCells);
+    try {
+      final image = await _renderHeroFrame(
+        strings: strings,
+        visibleCells: scene.cells,
+        scene: scene,
+        heroRatio: 0.58,
+        pulse: 0.76,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: FootprintTimelapseRange.global,
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('Share card image bytes are empty.');
+      }
+
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}dondepaso_share_card.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/png')],
+          text: strings.shareMapBody(zoneName, explorationPercent),
+          title: strings.shareMapTitle,
+        ),
+      );
+    } finally {
+      scene.dispose();
+    }
   }
 
   static Future<List<File>> _renderFrames({
     required AppStrings strings,
-    required List<FootprintCell> cells,
+    required _TimelapseScene scene,
     required String zoneName,
     required int explorationPercent,
     required int totalPoints,
@@ -142,10 +201,11 @@ class FootprintTimelapseService {
     for (var frameIndex = 0; frameIndex < revealFrameCount; frameIndex++) {
       final revealRatio = _easeOut((frameIndex + 1) / revealFrameCount);
       final pulse = _musicPulse(frameIndex / math.max(1, revealFrameCount - 1));
-      final visibleCount = math.max(1, (cells.length * revealRatio).round());
+      final visibleCount = math.max(1, (scene.cells.length * revealRatio).round());
       final uiImage = await _renderFrame(
         strings: strings,
-        visibleCells: cells.take(visibleCount).toList(growable: false),
+        visibleCells: scene.cells.take(visibleCount).toList(growable: false),
+        scene: scene,
         revealRatio: revealRatio,
         pulse: pulse,
         zoneName: zoneName,
@@ -171,7 +231,8 @@ class FootprintTimelapseService {
       final pulse = _musicPulse(0.82 + heroRatio * 0.18);
       final uiImage = await _renderHeroFrame(
         strings: strings,
-        visibleCells: cells,
+        visibleCells: scene.cells,
+        scene: scene,
         heroRatio: heroRatio,
         pulse: pulse,
         zoneName: zoneName,
@@ -250,6 +311,69 @@ class FootprintTimelapseService {
           )
           .toList(growable: false),
     };
+  }
+
+  static Future<_TimelapseScene> _buildScene(List<FootprintCell> cells) async {
+    final sortedBoundaries = cells
+        .map((cell) => (cell: cell, boundary: FootprintH3Grid.boundaryForCell(cell)))
+        .where((entry) => entry.boundary.isNotEmpty)
+        .toList(growable: false);
+
+    final latitudes = sortedBoundaries
+        .expand((entry) => entry.boundary.map((point) => point.latitude))
+        .toList(growable: false);
+    final longitudes = sortedBoundaries
+        .expand((entry) => entry.boundary.map((point) => point.longitude))
+        .toList(growable: false);
+
+    final minLat = latitudes.reduce(math.min);
+    final maxLat = latitudes.reduce(math.max);
+    final minLon = longitudes.reduce(math.min);
+    final maxLon = longitudes.reduce(math.max);
+    final latSpan = math.max(0.0006, maxLat - minLat);
+    final lonSpan = math.max(0.0006, maxLon - minLon);
+    final paddedLatSpan = latSpan * 1.18;
+    final paddedLonSpan = lonSpan * 1.18;
+    final centerLat = (minLat + maxLat) / 2;
+    final centerLon = (minLon + maxLon) / 2;
+    final mapWidth = _mapRight - _mapLeft;
+    final mapHeight = _mapBottom - _mapTop;
+
+    Offset project(double lat, double lon) {
+      final x =
+          ((lon - (centerLon - paddedLonSpan / 2)) / paddedLonSpan) * mapWidth;
+      final y =
+          ((centerLat + paddedLatSpan / 2 - lat) / paddedLatSpan) * mapHeight;
+      return Offset(_mapLeft + x, _mapTop + y);
+    }
+
+    final projectedCells = sortedBoundaries
+        .map(
+          (entry) => _ProjectedTimelapseCell(
+            cell: entry.cell,
+            path: _buildProjectedPath(
+              entry.boundary
+                  .map((point) => project(point.latitude, point.longitude))
+                  .toList(growable: false),
+            ),
+          ),
+        )
+        .toList(growable: false);
+
+    final mapImage = await _fetchRealMapImage(
+      minLat: centerLat - paddedLatSpan / 2,
+      maxLat: centerLat + paddedLatSpan / 2,
+      minLon: centerLon - paddedLonSpan / 2,
+      maxLon: centerLon + paddedLonSpan / 2,
+      width: mapWidth.toInt(),
+      height: mapHeight.toInt(),
+    );
+
+    return _TimelapseScene(
+      cells: projectedCells,
+      mapRect: Rect.fromLTWH(_mapLeft, _mapTop, mapWidth, mapHeight),
+      mapImage: mapImage,
+    );
   }
 
   static double _easeOut(double value) {
@@ -349,6 +473,158 @@ class FootprintTimelapseService {
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<ui.Image?> _fetchRealMapImage({
+    required double minLat,
+    required double maxLat,
+    required double minLon,
+    required double maxLon,
+    required int width,
+    required int height,
+  }) async {
+    try {
+      final zoom = _chooseZoom(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+        width: width,
+        height: height,
+      );
+
+      final topLeft = _latLonToWorldPixel(maxLat, minLon, zoom);
+      final bottomRight = _latLonToWorldPixel(minLat, maxLon, zoom);
+
+      final minTileX = (topLeft.dx / 256).floor();
+      final minTileY = (topLeft.dy / 256).floor();
+      final maxTileX = (bottomRight.dx / 256).floor();
+      final maxTileY = (bottomRight.dy / 256).floor();
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(
+        recorder,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      );
+
+      final pixelWidth = (bottomRight.dx - topLeft.dx).abs();
+      final pixelHeight = (bottomRight.dy - topLeft.dy).abs();
+      final scale = math.max(width / pixelWidth, height / pixelHeight);
+      final offsetX = (width - (pixelWidth * scale)) / 2;
+      final offsetY = (height - (pixelHeight * scale)) / 2;
+
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..color = const Color(0xFF1B1C1F),
+      );
+
+      final tileCount =
+          (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+      if (tileCount > _maxMapTiles) {
+        return null;
+      }
+
+      for (var tileX = minTileX; tileX <= maxTileX; tileX++) {
+        for (var tileY = minTileY; tileY <= maxTileY; tileY++) {
+          final tileImage = await _fetchTile(zoom, tileX, tileY);
+          if (tileImage == null) {
+            continue;
+          }
+
+          final destX = (((tileX * 256.0) - topLeft.dx) * scale) + offsetX;
+          final destY = (((tileY * 256.0) - topLeft.dy) * scale) + offsetY;
+          final destRect = Rect.fromLTWH(destX, destY, 256 * scale, 256 * scale);
+          paintImage(
+            canvas: canvas,
+            rect: destRect,
+            image: tileImage,
+            fit: BoxFit.fill,
+            filterQuality: FilterQuality.medium,
+          );
+          tileImage.dispose();
+        }
+      }
+
+      final fullRect = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
+      canvas.drawRect(
+        fullRect,
+        Paint()..color = Colors.black.withValues(alpha: 0.18),
+      );
+      canvas.drawRect(
+        fullRect,
+        Paint()
+          ..shader = const LinearGradient(
+            colors: [Color(0x127CA7FF), Color(0x10FFB457), Color(0x00000000)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(fullRect),
+      );
+
+      final picture = recorder.endRecording();
+      return picture.toImage(width, height);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<ui.Image?> _fetchTile(int zoom, int x, int y) async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://tile.openstreetmap.org/$zoom/$x/$y.png'),
+        headers: const {
+          'User-Agent': 'DondePaso/1.0 (timelapse test)',
+        },
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      return _decodeImage(response.bodyBytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<ui.Image> _decodeImage(Uint8List bytes) async {
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromList(bytes, completer.complete);
+    return completer.future;
+  }
+
+  static int _chooseZoom({
+    required double minLat,
+    required double maxLat,
+    required double minLon,
+    required double maxLon,
+    required int width,
+    required int height,
+  }) {
+    for (var zoom = 18; zoom >= 12; zoom--) {
+      final topLeft = _latLonToWorldPixel(maxLat, minLon, zoom);
+      final bottomRight = _latLonToWorldPixel(minLat, maxLon, zoom);
+      final pixelWidth = (bottomRight.dx - topLeft.dx).abs();
+      final pixelHeight = (bottomRight.dy - topLeft.dy).abs();
+      final tileCount =
+          ((bottomRight.dx / 256).floor() - (topLeft.dx / 256).floor() + 1) *
+          ((bottomRight.dy / 256).floor() - (topLeft.dy / 256).floor() + 1);
+      if (tileCount > _maxMapTiles) {
+        continue;
+      }
+      if (pixelWidth <= width * 1.25 && pixelHeight <= height * 1.25) {
+        return zoom;
+      }
+    }
+    return 12;
+  }
+
+  static Offset _latLonToWorldPixel(double lat, double lon, int zoom) {
+    final scale = 256.0 * math.pow(2, zoom).toDouble();
+    final x = ((lon + 180.0) / 360.0) * scale;
+    final sinLat = math.sin(lat * math.pi / 180.0).clamp(-0.9999, 0.9999);
+    final y =
+        (0.5 -
+            math.log((1 + sinLat) / (1 - sinLat)) / (4 * math.pi)) *
+        scale;
+    return Offset(x, y);
   }
 
   static Future<ui.Image> _renderIntroFrame({
@@ -460,7 +736,8 @@ class FootprintTimelapseService {
 
   static Future<ui.Image> _renderFrame({
     required AppStrings strings,
-    required List<FootprintCell> visibleCells,
+    required List<_ProjectedTimelapseCell> visibleCells,
+    required _TimelapseScene scene,
     required double revealRatio,
     required double pulse,
     required String zoneName,
@@ -478,68 +755,19 @@ class FootprintTimelapseService {
     final backgroundRect = const Rect.fromLTWH(0, 0, _canvasWidth, _canvasHeight);
     _paintBackdrop(canvas, backgroundRect, revealRatio, pulse);
 
-    final sortedBoundaries = visibleCells
-        .map((cell) => (cell: cell, boundary: FootprintH3Grid.boundaryForCell(cell)))
-        .where((entry) => entry.boundary.isNotEmpty)
-        .toList(growable: false);
-
-    final latitudes = sortedBoundaries
-        .expand((entry) => entry.boundary.map((point) => point.latitude))
-        .toList(growable: false);
-    final longitudes = sortedBoundaries
-        .expand((entry) => entry.boundary.map((point) => point.longitude))
-        .toList(growable: false);
-
-    final minLat = latitudes.reduce(math.min);
-    final maxLat = latitudes.reduce(math.max);
-    final minLon = longitudes.reduce(math.min);
-    final maxLon = longitudes.reduce(math.max);
-
-    final latSpan = math.max(0.0006, maxLat - minLat);
-    final lonSpan = math.max(0.0006, maxLon - minLon);
-    final cinematicZoom = 1.28 - (revealRatio * 0.16);
-    final paddedLatSpan = latSpan * cinematicZoom;
-    final paddedLonSpan = lonSpan * cinematicZoom;
-    final centerLat = (minLat + maxLat) / 2;
-    final centerLon = (minLon + maxLon) / 2;
-    final mapWidth = _mapRight - _mapLeft;
-    final mapHeight = _mapBottom - _mapTop;
-
-    Offset project(double lat, double lon) {
-      final x = ((lon - (centerLon - paddedLonSpan / 2)) / paddedLonSpan) * mapWidth;
-      final y = ((centerLat + paddedLatSpan / 2 - lat) / paddedLatSpan) * mapHeight;
-      return Offset(_mapLeft + x, _mapTop + y);
-    }
-
-    final mapRect = Rect.fromLTWH(_mapLeft, _mapTop, mapWidth, mapHeight);
+    final mapRect = scene.mapRect;
     _paintMapWell(canvas, mapRect);
-
-    final projectedCells = sortedBoundaries
-        .map(
-          (entry) => (
-            cell: entry.cell,
-            path: _buildProjectedPath(
-              entry.boundary
-                  .map((point) => project(point.latitude, point.longitude))
-                  .toList(growable: false),
-            ),
-          ),
-        )
-        .toList(growable: false);
-    _paintMapBaseLayer(
-      canvas,
-      mapRect: mapRect,
-      cells: projectedCells,
-    );
+    _paintSceneBackdrop(canvas, scene, mapReveal: 0.0);
     _paintExplorationMass(
       canvas,
       mapRect: mapRect,
-      cells: projectedCells,
+      cells: visibleCells,
       revealRatio: revealRatio,
       pulse: pulse,
+      mapReveal: 0.0,
     );
 
-    final latestPath = projectedCells.isNotEmpty ? projectedCells.last.path : null;
+    final latestPath = visibleCells.isNotEmpty ? visibleCells.last.path : null;
     if (latestPath != null) {
       final latestBounds = latestPath.getBounds();
       final focusRect = Rect.fromCircle(
@@ -709,7 +937,8 @@ class FootprintTimelapseService {
 
   static Future<ui.Image> _renderHeroFrame({
     required AppStrings strings,
-    required List<FootprintCell> visibleCells,
+    required List<_ProjectedTimelapseCell> visibleCells,
+    required _TimelapseScene scene,
     required double heroRatio,
     required double pulse,
     required String zoneName,
@@ -726,58 +955,17 @@ class FootprintTimelapseService {
     final backgroundRect = const Rect.fromLTWH(0, 0, _canvasWidth, _canvasHeight);
     _paintBackdrop(canvas, backgroundRect, 1.0, pulse);
 
-    final sortedBoundaries = visibleCells
-        .map((cell) => (cell: cell, boundary: FootprintH3Grid.boundaryForCell(cell)))
-        .where((entry) => entry.boundary.isNotEmpty)
-        .toList(growable: false);
-    final latitudes = sortedBoundaries
-        .expand((entry) => entry.boundary.map((point) => point.latitude))
-        .toList(growable: false);
-    final longitudes = sortedBoundaries
-        .expand((entry) => entry.boundary.map((point) => point.longitude))
-        .toList(growable: false);
-    final minLat = latitudes.reduce(math.min);
-    final maxLat = latitudes.reduce(math.max);
-    final minLon = longitudes.reduce(math.min);
-    final maxLon = longitudes.reduce(math.max);
-    final latSpan = math.max(0.0006, maxLat - minLat) * 1.02;
-    final lonSpan = math.max(0.0006, maxLon - minLon) * 1.02;
-    final centerLat = (minLat + maxLat) / 2;
-    final centerLon = (minLon + maxLon) / 2;
-    final mapWidth = _mapRight - _mapLeft;
-    final mapHeight = _mapBottom - _mapTop;
-
-    Offset project(double lat, double lon) {
-      final x = ((lon - (centerLon - lonSpan / 2)) / lonSpan) * mapWidth;
-      final y = ((centerLat + latSpan / 2 - lat) / latSpan) * mapHeight;
-      return Offset(_mapLeft + x, _mapTop + y);
-    }
-
-    final mapRect = Rect.fromLTWH(_mapLeft, _mapTop, mapWidth, mapHeight);
+    final mapRect = scene.mapRect;
     _paintMapWell(canvas, mapRect);
-    final projectedCells = sortedBoundaries
-        .map(
-          (entry) => (
-            cell: entry.cell,
-            path: _buildProjectedPath(
-              entry.boundary
-                  .map((point) => project(point.latitude, point.longitude))
-                  .toList(growable: false),
-            ),
-          ),
-        )
-        .toList(growable: false);
-    _paintMapBaseLayer(
-      canvas,
-      mapRect: mapRect,
-      cells: projectedCells,
-    );
+    final mapReveal = 0.25 + heroRatio * 0.75;
+    _paintSceneBackdrop(canvas, scene, mapReveal: mapReveal);
     _paintExplorationMass(
       canvas,
       mapRect: mapRect,
-      cells: projectedCells,
+      cells: visibleCells,
       revealRatio: 1,
       pulse: pulse,
+      mapReveal: mapReveal,
     );
 
     final heroAlpha = (0.72 + heroRatio * 0.28).clamp(0.0, 1.0);
@@ -1042,6 +1230,64 @@ class FootprintTimelapseService {
     );
   }
 
+  static void _paintSceneBackdrop(
+    Canvas canvas,
+    _TimelapseScene scene, {
+    required double mapReveal,
+  }) {
+    if (scene.mapImage != null) {
+      canvas.save();
+      canvas.clipRRect(
+        RRect.fromRectAndRadius(scene.mapRect, const Radius.circular(42)),
+      );
+      if (mapReveal > 0) {
+        paintImage(
+          canvas: canvas,
+          rect: scene.mapRect,
+          image: scene.mapImage!,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+        );
+      }
+      canvas.drawRect(
+        scene.mapRect,
+        Paint()..color = Colors.black.withValues(alpha: 0.72 - (mapReveal * 0.52)),
+      );
+      canvas.restore();
+      _paintMapAttribution(canvas, scene.mapRect);
+      return;
+    }
+
+    _paintMapBaseLayer(
+      canvas,
+      mapRect: scene.mapRect,
+      cells: scene.cells
+          .map((entry) => (cell: entry.cell, path: entry.path))
+          .toList(growable: false),
+    );
+  }
+
+  static void _paintMapAttribution(Canvas canvas, Rect mapRect) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '© OpenStreetMap',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.34),
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(
+        mapRect.right - painter.width - 10,
+        mapRect.bottom - painter.height - 8,
+      ),
+    );
+  }
+
   static ui.Path _buildProjectedPath(List<Offset> boundary) {
     final path = ui.Path()..moveTo(boundary.first.dx, boundary.first.dy);
     for (final point in boundary.skip(1)) {
@@ -1054,9 +1300,10 @@ class FootprintTimelapseService {
   static void _paintExplorationMass(
     Canvas canvas, {
     required Rect mapRect,
-    required List<({FootprintCell cell, ui.Path path})> cells,
+    required List<_ProjectedTimelapseCell> cells,
     required double revealRatio,
     required double pulse,
+    required double mapReveal,
   }) {
     if (cells.isEmpty) {
       return;
@@ -1071,7 +1318,7 @@ class FootprintTimelapseService {
       unionPath,
       Paint()
         ..color = const Color(0xFFFFA11A).withValues(
-          alpha: 0.11 + revealRatio * 0.07 + pulse * 0.025,
+          alpha: (0.11 + revealRatio * 0.07 + pulse * 0.025) * (1 - mapReveal * 0.28),
         )
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
@@ -1081,9 +1328,31 @@ class FootprintTimelapseService {
     canvas.drawPath(
       unionPath,
       Paint()
-        ..color = const Color(0xFFFFCE66).withValues(alpha: 0.09)
+        ..color = const Color(0xFFFFCE66).withValues(alpha: 0.09 * (1 - mapReveal * 0.22))
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
     );
+
+    canvas.save();
+    canvas.clipPath(unionPath);
+    canvas.drawRect(
+      mapRect,
+      Paint()
+        ..color = Colors.white.withValues(
+          alpha: (0.06 + revealRatio * 0.05 + pulse * 0.02) * (1 - mapReveal * 0.35),
+        )
+        ..blendMode = BlendMode.screen,
+    );
+    canvas.drawRect(
+      mapRect,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0x33FFF1C1), Color(0x1AFFF8EB), Color(0x22FFB03B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(mapRect)
+        ..blendMode = BlendMode.screen,
+    );
+    canvas.restore();
 
     for (var index = 0; index < cells.length; index++) {
       final entry = cells[index];
@@ -1091,15 +1360,21 @@ class FootprintTimelapseService {
       final intensity = (0.34 + math.min(0.56, (cell.visits - 1) * 0.05))
           .clamp(0.34, 0.94);
       final isRecent = index >= math.max(0, cells.length - 4);
+      final contrastBoost = mapReveal.clamp(0.0, 1.0);
 
       final fillColor = Color.lerp(
-        const Color(0xFF777777),
-        const Color(0xFFF9F7F0),
+        const Color(0xFF4D4434),
+        const Color(0xFFB69D70),
         intensity,
       )!;
       final borderColor = Color.lerp(
-        const Color(0xFFFF9C1A),
-        const Color(0xFFFFE7A1),
+        const Color(0xFF6B4A18),
+        const Color(0xFFF0BF68),
+        intensity,
+      )!;
+      final darkEdgeColor = Color.lerp(
+        const Color(0xFF1A1206),
+        const Color(0xFF3B2B11),
         intensity,
       )!;
 
@@ -1116,14 +1391,33 @@ class FootprintTimelapseService {
         entry.path,
         Paint()
           ..style = PaintingStyle.fill
-          ..color = fillColor.withValues(alpha: isRecent ? 0.86 + pulse * 0.04 : 0.78),
+          ..color = fillColor.withValues(
+            alpha: ((isRecent ? 0.24 + pulse * 0.03 : 0.18) *
+                    (1 - mapReveal * 0.16)) +
+                (0.10 * contrastBoost),
+          )
+          ..blendMode = BlendMode.srcOver,
       );
       canvas.drawPath(
         entry.path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = isRecent ? 2.2 : 1.15
-          ..color = borderColor.withValues(alpha: isRecent ? 0.74 + pulse * 0.10 : 0.28),
+          ..strokeWidth = (isRecent ? 3.6 : 2.4) + (contrastBoost * 0.65)
+          ..color = darkEdgeColor.withValues(
+            alpha: ((isRecent ? 0.62 : 0.48) * (1 - mapReveal * 0.05)) +
+                (0.10 * contrastBoost),
+          ),
+      );
+      canvas.drawPath(
+        entry.path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (isRecent ? 2.15 : 1.4) + (contrastBoost * 0.4)
+          ..color = borderColor.withValues(
+            alpha: ((isRecent ? 0.86 + pulse * 0.08 : 0.54) *
+                    (1 - mapReveal * 0.04)) +
+                (0.10 * contrastBoost),
+          ),
       );
     }
 
@@ -1213,5 +1507,28 @@ class FootprintTimelapseService {
     );
     _paintText(canvas, title, Offset(origin.dx + 16, origin.dy + 16), 18, FontWeight.w600, accent);
     _paintText(canvas, value, Offset(origin.dx + 16, origin.dy + 48), 28, FontWeight.w800, Colors.white);
+  }
+}
+
+class _ProjectedTimelapseCell {
+  const _ProjectedTimelapseCell({required this.cell, required this.path});
+
+  final FootprintCell cell;
+  final ui.Path path;
+}
+
+class _TimelapseScene {
+  const _TimelapseScene({
+    required this.cells,
+    required this.mapRect,
+    required this.mapImage,
+  });
+
+  final List<_ProjectedTimelapseCell> cells;
+  final Rect mapRect;
+  final ui.Image? mapImage;
+
+  void dispose() {
+    mapImage?.dispose();
   }
 }
