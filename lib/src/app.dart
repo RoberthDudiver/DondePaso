@@ -8,7 +8,12 @@ import 'security/app_security_gate.dart';
 import 'telemetry/firebase_telemetry.dart';
 
 class DondePasoApp extends StatelessWidget {
-  const DondePasoApp({super.key});
+  const DondePasoApp({
+    super.key,
+    this.includeTelemetryObserver = false,
+  });
+
+  final bool includeTelemetryObserver;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +30,8 @@ class DondePasoApp extends StatelessWidget {
       title: 'DondePaso',
       debugShowCheckedModeBanner: false,
       navigatorObservers: [
-        if (FirebaseTelemetry.observer != null) FirebaseTelemetry.observer!,
+        if (includeTelemetryObserver && FirebaseTelemetry.observer != null)
+          FirebaseTelemetry.observer!,
       ],
       supportedLocales: const [Locale('en'), Locale('es')],
       localizationsDelegates: const [

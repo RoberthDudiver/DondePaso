@@ -3,8 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -51,61 +49,47 @@ class FootprintTimelapseService {
     final sortedCells = [...h3Cells]
       ..sort((left, right) => left.lastSeen.compareTo(right.lastSeen));
 
-    final introFrameCount = _framesForSeconds(_introDurationSeconds);
-    final heroFrameCount = _framesForSeconds(_heroDurationSeconds);
-    final holdFrameCount = _framesForSeconds(_holdDurationSeconds);
-    final revealFrameCount = _resolveRevealFrameCount(
-      cellCount: sortedCells.length,
-      heroFrameCount: heroFrameCount,
-      holdFrameCount: holdFrameCount,
-    );
-    final directory = await getTemporaryDirectory();
-    final workingDirectory = Directory(
-      '${directory.path}${Platform.pathSeparator}dondepaso_timelapse_frames',
-    );
-    if (workingDirectory.existsSync()) {
-      await workingDirectory.delete(recursive: true);
-    }
-    await workingDirectory.create(recursive: true);
-    final audioTrack = await _prepareAudioTrack(workingDirectory);
     final scene = await _buildScene(sortedCells);
+    try {
+      final image = await _renderHeroFrame(
+        strings: strings,
+        visibleCells: scene.cells,
+        scene: scene,
+        heroRatio: 1.0,
+        pulse: 0.92,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: range,
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('Timelapse fallback image bytes are empty.');
+      }
 
-    final frameFiles = await _renderFrames(
-      strings: strings,
-      scene: scene,
-      zoneName: zoneName,
-      explorationPercent: explorationPercent,
-      totalPoints: totalPoints,
-      knownKilometers: knownKilometers,
-      introFrameCount: introFrameCount,
-      revealFrameCount: revealFrameCount,
-      heroFrameCount: heroFrameCount,
-      holdFrameCount: holdFrameCount,
-      range: range,
-      workingDirectory: workingDirectory,
-    );
-    final file = await _encodeVideo(
-      workingDirectory: workingDirectory,
-      frameCount: frameFiles.length,
-      audioTrack: audioTrack,
-    );
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}dondepaso_timelapse_fallback.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
 
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'video/mp4')],
-        text: strings.timelapseShareBody(
-          zoneName,
-          explorationPercent,
-          strings.timelapseRangeLabel(range),
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/png')],
+          text: strings.timelapseShareBody(
+            zoneName,
+            explorationPercent,
+            strings.timelapseRangeLabel(range),
+          ),
+          title: strings.shareTimelapseOption,
         ),
-        title: strings.shareTimelapseOption,
-      ),
-    );
-
-    if (workingDirectory.existsSync()) {
-      await workingDirectory.delete(recursive: true);
+      );
+    } finally {
+      scene.dispose();
     }
-    scene.dispose();
   }
 
   static Future<void> generateAndShareCard({
@@ -160,110 +144,6 @@ class FootprintTimelapseService {
     } finally {
       scene.dispose();
     }
-  }
-
-  static Future<List<File>> _renderFrames({
-    required AppStrings strings,
-    required _TimelapseScene scene,
-    required String zoneName,
-    required int explorationPercent,
-    required int totalPoints,
-    required double knownKilometers,
-    required int introFrameCount,
-    required int revealFrameCount,
-    required int heroFrameCount,
-    required int holdFrameCount,
-    required FootprintTimelapseRange range,
-    required Directory workingDirectory,
-  }) async {
-    final frameFiles = <File>[];
-    for (var introIndex = 0; introIndex < introFrameCount; introIndex++) {
-      final introRatio = introIndex / math.max(1, introFrameCount - 1);
-      final uiImage = await _renderIntroFrame(
-        strings: strings,
-        introRatio: introRatio,
-        zoneName: zoneName,
-        range: range,
-      );
-      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) {
-        uiImage.dispose();
-        continue;
-      }
-      final frameFile = File(
-        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
-      );
-      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      frameFiles.add(frameFile);
-      uiImage.dispose();
-    }
-
-    for (var frameIndex = 0; frameIndex < revealFrameCount; frameIndex++) {
-      final revealRatio = _easeOut((frameIndex + 1) / revealFrameCount);
-      final pulse = _musicPulse(frameIndex / math.max(1, revealFrameCount - 1));
-      final visibleCount = math.max(1, (scene.cells.length * revealRatio).round());
-      final uiImage = await _renderFrame(
-        strings: strings,
-        visibleCells: scene.cells.take(visibleCount).toList(growable: false),
-        scene: scene,
-        revealRatio: revealRatio,
-        pulse: pulse,
-        zoneName: zoneName,
-        explorationPercent: explorationPercent,
-        totalPoints: totalPoints,
-        knownKilometers: knownKilometers,
-        range: range,
-      );
-      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) {
-        uiImage.dispose();
-        continue;
-      }
-      final frameFile = File(
-        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
-      );
-      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      frameFiles.add(frameFile);
-      uiImage.dispose();
-    }
-    for (var heroIndex = 0; heroIndex < heroFrameCount; heroIndex++) {
-      final heroRatio = heroIndex / math.max(1, heroFrameCount - 1);
-      final pulse = _musicPulse(0.82 + heroRatio * 0.18);
-      final uiImage = await _renderHeroFrame(
-        strings: strings,
-        visibleCells: scene.cells,
-        scene: scene,
-        heroRatio: heroRatio,
-        pulse: pulse,
-        zoneName: zoneName,
-        explorationPercent: explorationPercent,
-        totalPoints: totalPoints,
-        knownKilometers: knownKilometers,
-        range: range,
-      );
-      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) {
-        uiImage.dispose();
-        continue;
-      }
-      final frameFile = File(
-        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
-      );
-      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      frameFiles.add(frameFile);
-      uiImage.dispose();
-    }
-    if (frameFiles.isNotEmpty) {
-      final lastBytes = await frameFiles.last.readAsBytes();
-      for (var holdIndex = 0; holdIndex < holdFrameCount; holdIndex++) {
-        final holdFile = File(
-          '${workingDirectory.path}${Platform.pathSeparator}frame_${(frameFiles.length + holdIndex).toString().padLeft(3, '0')}.png',
-        );
-        await holdFile.writeAsBytes(lastBytes, flush: true);
-        frameFiles.add(holdFile);
-      }
-    }
-    return frameFiles;
   }
 
   static int _framesForSeconds(double seconds) {
@@ -387,93 +267,6 @@ class FootprintTimelapseService {
     return 0.58 + (pulse * 0.42);
   }
 
-  static Future<File> _encodeVideo({
-    required Directory workingDirectory,
-    required int frameCount,
-    required File? audioTrack,
-  }) async {
-    if (frameCount == 0) {
-      throw StateError('No timelapse frames were generated.');
-    }
-
-    final outputFile = File(
-      '${workingDirectory.path}${Platform.pathSeparator}dondepaso_timelapse.mp4',
-    );
-    if (outputFile.existsSync()) {
-      await outputFile.delete();
-    }
-
-    final framesInput =
-        '${workingDirectory.path}${Platform.pathSeparator}frame_%03d.png';
-    final commandParts = [
-      '-y',
-      '-framerate',
-      '$_fps',
-      '-i',
-      '"$framesInput"',
-    ];
-    if (audioTrack != null && audioTrack.existsSync()) {
-      final durationSeconds = frameCount / _fps;
-      final fadeOutStart = math.max(0.0, durationSeconds - 0.9);
-      commandParts.addAll([
-        '-stream_loop',
-        '-1',
-        '-i',
-        '"${audioTrack.path}"',
-        '-af',
-        '"afade=t=in:st=0:d=0.55,afade=t=out:st=${fadeOutStart.toStringAsFixed(2)}:d=0.85,volume=0.95"',
-      ]);
-    }
-    commandParts.addAll([
-      '-map',
-      '0:v:0',
-      if (audioTrack != null && audioTrack.existsSync()) ...[
-        '-map',
-        '1:a:0',
-      ],
-      '-vf',
-      '"format=yuv420p,scale=720:1280:flags=lanczos,fps=$_fps"',
-      '-c:v',
-      'mpeg4',
-      '-q:v',
-      '3',
-      if (audioTrack != null && audioTrack.existsSync()) ...[
-        '-c:a',
-        'aac',
-        '-b:a',
-        '160k',
-        '-shortest',
-      ],
-      '-movflags',
-      '+faststart',
-      '"${outputFile.path}"',
-    ]);
-    final command = commandParts.join(' ');
-
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(returnCode) || !outputFile.existsSync()) {
-      final logs = await session.getAllLogsAsString();
-      throw StateError('Timelapse video encoding failed: ${logs ?? 'unknown'}');
-    }
-    return outputFile;
-  }
-
-  static Future<File?> _prepareAudioTrack(Directory workingDirectory) async {
-    try {
-      final byteData = await rootBundle.load('DOndePAso1.mp3');
-      final audioFile = File(
-        '${workingDirectory.path}${Platform.pathSeparator}dondepaso_audio.mp3',
-      );
-      await audioFile.writeAsBytes(
-        byteData.buffer.asUint8List(),
-        flush: true,
-      );
-      return audioFile;
-    } catch (_) {
-      return null;
-    }
-  }
 
   static Future<ui.Image?> _fetchRealMapImage({
     required double minLat,
