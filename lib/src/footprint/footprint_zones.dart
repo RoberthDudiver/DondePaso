@@ -52,6 +52,9 @@ class FootprintZonesSnapshot {
 class FootprintZones {
   FootprintZones._();
 
+  static const int zoneParentResolution = 9;
+  static const int estimatedCellsPerZone = 49;
+
   static FootprintZonesSnapshot build({
     required List<FootprintCell> cells,
     required DateTime now,
@@ -93,7 +96,7 @@ class FootprintZones {
 
   static String _zoneKeyFor(FootprintCell cell) {
     final index = BigInt.parse(cell.h3Index!);
-    final parent = _zonesH3.cellToParent(index, 8);
+    final parent = _zonesH3.cellToParent(index, zoneParentResolution);
     return parent.toString();
   }
 }
@@ -119,8 +122,8 @@ class _ZoneAccumulator {
   FootprintZone toZone() {
     final discoveredCells = _cells.length;
     final estimatedTotalCells = math.max(
-      discoveredCells + 8,
-      (discoveredCells * 1.55).round(),
+      FootprintZones.estimatedCellsPerZone,
+      discoveredCells,
     );
     final center = _zonesH3.cellToGeo(BigInt.parse(zoneKey));
     final suffix = zoneKey.length > 4 ? zoneKey.substring(zoneKey.length - 4) : zoneKey;

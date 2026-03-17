@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'footprint_cell.dart';
 import 'footprint_h3_grid.dart';
+import 'footprint_transport.dart';
 
 class FootprintFogLayer extends StatelessWidget {
   const FootprintFogLayer({
@@ -15,6 +16,7 @@ class FootprintFogLayer extends StatelessWidget {
     required this.now,
     required this.forgetAfter,
     required this.revealMeters,
+    required this.lightMapMode,
   });
 
   final List<FootprintCell> cells;
@@ -22,6 +24,7 @@ class FootprintFogLayer extends StatelessWidget {
   final DateTime now;
   final Duration forgetAfter;
   final double revealMeters;
+  final bool lightMapMode;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +44,7 @@ class FootprintFogLayer extends StatelessWidget {
           now: now,
           forgetAfter: forgetAfter,
           revealMeters: revealMeters,
+          lightMapMode: lightMapMode,
         ),
       ),
     );
@@ -55,6 +59,7 @@ class _FogPainter extends CustomPainter {
     required this.now,
     required this.forgetAfter,
     required this.revealMeters,
+    required this.lightMapMode,
   });
 
   final MapCamera camera;
@@ -63,6 +68,7 @@ class _FogPainter extends CustomPainter {
   final DateTime now;
   final Duration forgetAfter;
   final double revealMeters;
+  final bool lightMapMode;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -71,8 +77,13 @@ class _FogPainter extends CustomPainter {
 
     canvas.drawRect(
       bounds,
-      Paint()..color = const Color(0xFF020202).withValues(alpha: 0.88),
+      Paint()
+        ..color = const Color(0xFF000000).withValues(
+          alpha: lightMapMode ? 0.26 : 1.0,
+        ),
     );
+
+    final visibleHexes = <_VisibleHexRender>[];
 
     for (final cell in cells) {
       final freshness = _freshness(cell);
@@ -82,84 +93,22 @@ class _FogPainter extends CustomPainter {
 
       if (cell.isH3) {
         final path = _pathForHexCell(cell);
-        if (path != null) {
+        if (path != null && _isPathVisible(path, size)) {
           final clarity = (freshness *
                   (0.28 +
                       (cell.visits.clamp(1, 10) * 0.045) +
                       ((cell.coverageWeight - 1) * 0.12)))
-              .clamp(0.18, 0.78);
-          final innerBlurRadius =
-              (2.8 + (cell.visits.clamp(1, 8) * 0.45)).toDouble();
-          final shadowBlurRadius =
-              (4.2 + (cell.visits.clamp(1, 8) * 0.55)).toDouble();
-          final shadowWidth = (3.6 + (cell.visits.clamp(1, 8) * 0.28))
-              .toDouble();
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.plus
-              ..color = const Color(0xFFFFB84D).withValues(
-                alpha: 0.04 + (clarity * 0.08),
-              ),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.dstOut
-              ..color = Colors.white.withValues(alpha: clarity * 0.52),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.dstOut
-              ..maskFilter = MaskFilter.blur(
-                BlurStyle.normal,
-                innerBlurRadius,
-              )
-              ..color = Colors.white.withValues(alpha: clarity * 0.22),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.srcOver
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = shadowWidth
-              ..maskFilter = MaskFilter.blur(
-                BlurStyle.normal,
-                shadowBlurRadius,
-              )
-              ..color = const Color(0xFF000000).withValues(
-                alpha: 0.18 + (clarity * 0.14),
-              ),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.plus
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.8
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.6)
-              ..color = const Color(0xFFFFB84D).withValues(
-                alpha: 0.08 + (clarity * 0.10),
-              ),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.dstOut
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.2
-              ..color = Colors.white.withValues(alpha: clarity * 0.16),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.srcOver
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.0
-              ..color = const Color(0xFFFFD36F).withValues(
-                alpha: 0.08 + (clarity * 0.11),
-              ),
+              .clamp(0.22, 0.82);
+          final whiteness =
+              (0.24 + (cell.visits.clamp(1, 12) * 0.05)).clamp(0.28, 0.86);
+          visibleHexes.add(
+            _VisibleHexRender(
+              path: path,
+              clarity: clarity,
+              whiteness: whiteness,
+              visits: cell.visits,
+              transportMode: cell.dominantTransport,
+            ),
           );
         }
         continue;
@@ -198,6 +147,9 @@ class _FogPainter extends CustomPainter {
       );
     }
 
+    _paintMergedHexTerritory(canvas, visibleHexes);
+    _paintHexTexture(canvas, visibleHexes);
+
     if (currentLocation != null) {
       final center =
           camera.projectAtZoom(currentLocation!) - camera.pixelOrigin;
@@ -231,6 +183,169 @@ class _FogPainter extends CustomPainter {
     return ratio.clamp(0, 1).toDouble();
   }
 
+  void _paintMergedHexTerritory(
+    Canvas canvas,
+    List<_VisibleHexRender> visibleHexes,
+  ) {
+    final mergedPath = _mergedVisibleHexPath(visibleHexes);
+    if (mergedPath == null) {
+      return;
+    }
+
+    var claritySum = 0.0;
+    var whitenessPeak = 0.0;
+    var visitsPeak = 1;
+    for (final render in visibleHexes) {
+      claritySum += render.clarity;
+      if (render.whiteness > whitenessPeak) {
+        whitenessPeak = render.whiteness;
+      }
+      if (render.visits > visitsPeak) {
+        visitsPeak = render.visits;
+      }
+    }
+
+    final averageClarity = claritySum / visibleHexes.length;
+    final outerGlowBlur = 9.0 + (visitsPeak.clamp(1, 12) * 1.05);
+
+    if (lightMapMode) {
+      final warmGlow = Color.lerp(
+        const Color(0xFF8A4A00),
+        const Color(0xFFC57A16),
+        whitenessPeak,
+      )!;
+      final warmFill = Color.lerp(
+        const Color(0xFF6D3900),
+        const Color(0xFFB56A10),
+        whitenessPeak,
+      )!;
+
+      canvas.drawPath(
+        mergedPath,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, outerGlowBlur)
+          ..color = warmGlow.withValues(
+            alpha: 0.14 + (averageClarity * 0.16),
+          ),
+      );
+      canvas.drawPath(
+        mergedPath,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..color = warmFill.withValues(
+            alpha: 0.15 + (averageClarity * 0.10),
+          ),
+      );
+    } else {
+      canvas.drawPath(
+        mergedPath,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, outerGlowBlur)
+          ..color = Colors.white.withValues(
+            alpha: (0.06 + (averageClarity * 0.10)) *
+                (0.8 + (whitenessPeak * 0.2)),
+          ),
+      );
+      canvas.drawPath(
+        mergedPath,
+        Paint()
+          ..blendMode = BlendMode.dstOut
+          ..color = Colors.white.withValues(
+            alpha: 0.42 + (averageClarity * 0.16),
+          ),
+      );
+      canvas.drawPath(
+        mergedPath,
+        Paint()
+          ..blendMode = BlendMode.dstOut
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            7.0 + (visitsPeak.clamp(1, 12) * 0.72),
+          )
+          ..color = Colors.white.withValues(
+            alpha: 0.22 + (averageClarity * 0.10),
+          ),
+      );
+    }
+  }
+
+  void _paintHexTexture(Canvas canvas, List<_VisibleHexRender> visibleHexes) {
+    for (final render in visibleHexes) {
+      final outerGlowBlur = (4.0 + (render.visits.clamp(1, 10) * 0.68))
+          .toDouble();
+
+      if (lightMapMode) {
+        final warmGlow = Color.lerp(
+          const Color(0xFF955200),
+          const Color(0xFFC77E18),
+          render.whiteness,
+        )!;
+        final edgeColor = render.transportMode == FootprintTransportMode.vehicle
+            ? const Color(0xFF55AFFF)
+            : warmGlow;
+        canvas.drawPath(
+          render.path,
+          Paint()
+            ..blendMode = BlendMode.plus
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, outerGlowBlur)
+            ..color = warmGlow.withValues(
+              alpha: 0.05 + (render.clarity * 0.05),
+            ),
+        );
+        canvas.drawPath(
+          render.path,
+          Paint()
+            ..blendMode = BlendMode.srcOver
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.65
+            ..color = edgeColor.withValues(
+              alpha: render.transportMode == FootprintTransportMode.vehicle
+                  ? 0.16 + (render.clarity * 0.10)
+                  : 0.04 + (render.clarity * 0.05),
+            ),
+        );
+      } else {
+        final edgeColor = render.transportMode == FootprintTransportMode.vehicle
+            ? const Color(0xFF7BC7FF)
+            : Colors.white;
+        canvas.drawPath(
+          render.path,
+          Paint()
+            ..blendMode = BlendMode.plus
+            ..color = Colors.white.withValues(
+              alpha: (0.04 + (render.clarity * 0.05)) * render.whiteness,
+            ),
+        );
+        canvas.drawPath(
+          render.path,
+          Paint()
+            ..blendMode = BlendMode.srcOver
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.55
+            ..color = edgeColor.withValues(
+              alpha: render.transportMode == FootprintTransportMode.vehicle
+                  ? 0.14 + (render.clarity * 0.08)
+                  : (0.02 + (render.clarity * 0.04)) * render.whiteness,
+            ),
+        );
+      }
+    }
+  }
+
+  ui.Path? _mergedVisibleHexPath(List<_VisibleHexRender> visibleHexes) {
+    if (visibleHexes.isEmpty) {
+      return null;
+    }
+
+    var merged = ui.Path.from(visibleHexes.first.path);
+    for (final render in visibleHexes.skip(1)) {
+      merged = ui.Path.combine(ui.PathOperation.union, merged, render.path);
+    }
+    return merged;
+  }
+
   ui.Path? _pathForHexCell(FootprintCell cell) {
     final points = FootprintH3Grid.boundaryForCell(cell);
     if (points.isEmpty) {
@@ -244,27 +359,12 @@ class _FogPainter extends CustomPainter {
       return null;
     }
 
-    final center = projectedPoints.fold(
-          Offset.zero,
-          (sum, point) => sum + point,
-        ) /
-        projectedPoints.length.toDouble();
-    const visualScale = 0.72;
-    final insetPoints = projectedPoints
-        .map(
-          (point) => Offset(
-            center.dx + ((point.dx - center.dx) * visualScale),
-            center.dy + ((point.dy - center.dy) * visualScale),
-          ),
-        )
-        .toList(growable: false);
-
     final path = ui.Path();
-    for (var index = 0; index < insetPoints.length; index++) {
+    for (var index = 0; index < projectedPoints.length; index++) {
       if (index == 0) {
-        path.moveTo(insetPoints[index].dx, insetPoints[index].dy);
+        path.moveTo(projectedPoints[index].dx, projectedPoints[index].dy);
       } else {
-        path.lineTo(insetPoints[index].dx, insetPoints[index].dy);
+        path.lineTo(projectedPoints[index].dx, projectedPoints[index].dy);
       }
     }
 
@@ -287,6 +387,10 @@ class _FogPainter extends CustomPainter {
     ).overlaps(Offset.zero & size);
   }
 
+  bool _isPathVisible(ui.Path path, Size size) {
+    return path.getBounds().overlaps(Offset.zero & size);
+  }
+
   @override
   bool shouldRepaint(covariant _FogPainter oldDelegate) {
     return oldDelegate.cells != cells ||
@@ -295,4 +399,20 @@ class _FogPainter extends CustomPainter {
         oldDelegate.camera.center != camera.center ||
         oldDelegate.camera.zoom != camera.zoom;
   }
+}
+
+class _VisibleHexRender {
+  const _VisibleHexRender({
+    required this.path,
+    required this.clarity,
+    required this.whiteness,
+    required this.visits,
+    required this.transportMode,
+  });
+
+  final ui.Path path;
+  final double clarity;
+  final double whiteness;
+  final int visits;
+  final FootprintTransportMode transportMode;
 }

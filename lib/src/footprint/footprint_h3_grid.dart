@@ -4,6 +4,7 @@ import 'package:h3_flutter/h3_flutter.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'footprint_cell.dart';
+import 'footprint_transport.dart';
 
 const footprintH3Resolution = 11;
 
@@ -23,6 +24,7 @@ class FootprintH3Grid {
     required DateTime lastSeen,
     int visits = 1,
     double coverageWeight = 1,
+    FootprintTransportMode transportMode = FootprintTransportMode.unknown,
   }) {
     final index = _indexForPoint(point);
     return cellForIndex(
@@ -30,6 +32,7 @@ class FootprintH3Grid {
       lastSeen: lastSeen,
       visits: visits,
       coverageWeight: coverageWeight,
+      transportMode: transportMode,
     );
   }
 
@@ -38,6 +41,7 @@ class FootprintH3Grid {
     required DateTime lastSeen,
     int visits = 1,
     double coverageWeight = 1,
+    FootprintTransportMode transportMode = FootprintTransportMode.unknown,
   }) {
     final center = _h3.cellToGeo(index);
     return FootprintCell(
@@ -47,6 +51,8 @@ class FootprintH3Grid {
       lastSeen: lastSeen,
       h3Index: index.toString(),
       coverageWeight: coverageWeight,
+      walkingVisits: transportMode == FootprintTransportMode.walking ? visits : 0,
+      vehicleVisits: transportMode == FootprintTransportMode.vehicle ? visits : 0,
     );
   }
 

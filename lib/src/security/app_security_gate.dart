@@ -81,10 +81,18 @@ class _AppSecurityGateState extends State<AppSecurityGate> {
         return;
       }
 
-      // Fallback for unsupported platforms such as widget tests.
+      if (_isTestBinding()) {
+        setState(() {
+          _isUnlocked = true;
+          _securityUnavailable = false;
+          _isChecking = false;
+        });
+        return;
+      }
+
       setState(() {
-        _isUnlocked = true;
-        _securityUnavailable = false;
+        _isUnlocked = false;
+        _securityUnavailable = true;
         _isChecking = false;
       });
     } finally {

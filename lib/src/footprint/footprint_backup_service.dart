@@ -61,8 +61,10 @@ class FootprintBackupService {
       'cells': state.cells.map((cell) => cell.toMap()).toList(),
       'legacyCells': state.legacyCells.map((cell) => cell.toMap()).toList(),
       'onboardingSeen': state.onboardingSeen,
+      'lightMapMode': state.lightMapMode,
       'totalPoints': state.totalPoints,
       'totalDistanceMeters': state.totalDistanceMeters,
+      'totalVehicleDistanceMeters': state.totalVehicleDistanceMeters,
       'todayDistanceMeters': state.todayDistanceMeters,
       'todayDistanceDayKey': state.todayDistanceDayKey,
       'passiveTrackingEnabled': state.passiveTrackingEnabled,
@@ -90,9 +92,12 @@ class FootprintBackupService {
       cells: _decodeCells(map['cells']),
       legacyCells: _decodeCells(map['legacyCells']),
       onboardingSeen: map['onboardingSeen'] as bool? ?? false,
+      lightMapMode: map['lightMapMode'] as bool? ?? false,
       totalPoints: (map['totalPoints'] as num?)?.toInt() ?? 0,
       totalDistanceMeters:
           (map['totalDistanceMeters'] as num?)?.toDouble() ?? 0,
+      totalVehicleDistanceMeters:
+          (map['totalVehicleDistanceMeters'] as num?)?.toDouble() ?? 0,
       todayDistanceMeters: (map['todayDistanceMeters'] as num?)?.toDouble() ?? 0,
       todayDistanceDayKey: map['todayDistanceDayKey'] as String?,
       passiveTrackingEnabled: map['passiveTrackingEnabled'] as bool? ?? true,

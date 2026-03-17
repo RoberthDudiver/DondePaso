@@ -44,6 +44,8 @@ class FootprintProgression {
     required int totalPoints,
     required double knownKilometers,
     required double traveledTodayKilometers,
+    required double totalDistanceKilometers,
+    required double vehicleKilometers,
     required int dailySteps,
     required FootprintZonesSnapshot zonesSnapshot,
   }) {
@@ -65,48 +67,104 @@ class FootprintProgression {
           icon: Icons.explore_rounded,
           unlocked: totalPoints >= 120,
         ),
-        ProgressionAchievement(
-          title: strings.achievementMapStarterTitle,
-          description: strings.achievementMapStarterBody,
-          icon: Icons.map_rounded,
-          unlocked: totalPoints >= 1000,
+        _pointsMilestone(strings, 2500, totalPoints, Icons.map_rounded),
+        _pointsMilestone(strings, 6000, totalPoints, Icons.auto_awesome_rounded),
+        _pointsMilestone(strings, 12000, totalPoints, Icons.bolt_rounded),
+        _pointsMilestone(
+          strings,
+          25000,
+          totalPoints,
+          Icons.workspace_premium_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementNeighborhoodTitle,
-          description: strings.achievementNeighborhoodBody,
-          icon: Icons.route_rounded,
-          unlocked: knownKilometers >= 1.0,
+        _knownMilestone(strings, 2, knownKilometers, Icons.route_rounded),
+        _knownMilestone(strings, 5, knownKilometers, Icons.terrain_rounded),
+        _knownMilestone(strings, 10, knownKilometers, Icons.explore_rounded),
+        _knownMilestone(strings, 20, knownKilometers, Icons.public_rounded),
+        _coverageMilestone(strings, 20, primaryCoverage, Icons.grid_view_rounded),
+        _coverageMilestone(strings, 40, primaryCoverage, Icons.hexagon_rounded),
+        _coverageMilestone(strings, 65, primaryCoverage, Icons.hub_rounded),
+        _todayMilestone(
+          strings,
+          5,
+          traveledTodayKilometers,
+          Icons.directions_walk_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementRoutineBreakerTitle,
-          description: strings.achievementRoutineBreakerBody,
-          icon: Icons.alt_route_rounded,
-          unlocked: knownKilometers >= 3.5,
+        _todayMilestone(
+          strings,
+          10,
+          traveledTodayKilometers,
+          Icons.directions_run_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementZoneKeeperTitle,
-          description: strings.achievementZoneKeeperBody,
-          icon: Icons.hexagon_rounded,
-          unlocked: primaryCoverage >= 0.45,
+        _distanceMilestone(
+          strings,
+          15,
+          totalDistanceKilometers,
+          Icons.timeline_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementCityPulseTitle,
-          description: strings.achievementCityPulseBody,
-          icon: Icons.directions_walk_rounded,
-          unlocked: traveledTodayKilometers >= 5,
+        _distanceMilestone(
+          strings,
+          40,
+          totalDistanceKilometers,
+          Icons.alt_route_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementStepExplorerTitle,
-          description: strings.achievementStepExplorerBody,
-          icon: Icons.local_fire_department_rounded,
-          unlocked: dailySteps >= 10000,
+        _distanceMilestone(
+          strings,
+          80,
+          totalDistanceKilometers,
+          Icons.route_rounded,
         ),
-        ProgressionAchievement(
-          title: strings.achievementMultiZoneTitle,
-          description: strings.achievementMultiZoneBody,
-          icon: Icons.public_rounded,
-          unlocked: zoneCount >= 3,
+        _distanceMilestone(
+          strings,
+          160,
+          totalDistanceKilometers,
+          Icons.public_rounded,
         ),
+        _stepsMilestone(
+          strings,
+          12000,
+          dailySteps,
+          Icons.local_fire_department_rounded,
+        ),
+        _stepsMilestone(strings, 20000, dailySteps, Icons.whatshot_rounded),
+        _vehicleMilestone(
+          strings,
+          15,
+          vehicleKilometers,
+          Icons.directions_car_filled_rounded,
+        ),
+        _vehicleMilestone(
+          strings,
+          50,
+          vehicleKilometers,
+          Icons.airport_shuttle_rounded,
+        ),
+        _vehicleMilestone(
+          strings,
+          120,
+          vehicleKilometers,
+          Icons.local_shipping_rounded,
+        ),
+        _vehicleMilestone(
+          strings,
+          250,
+          vehicleKilometers,
+          Icons.route_rounded,
+        ),
+        _vehicleMilestone(
+          strings,
+          500,
+          vehicleKilometers,
+          Icons.travel_explore_rounded,
+        ),
+        _vehicleMilestone(
+          strings,
+          1000,
+          vehicleKilometers,
+          Icons.public_rounded,
+        ),
+        _zoneMilestone(strings, 3, zoneCount, Icons.place_rounded),
+        _zoneMilestone(strings, 6, zoneCount, Icons.travel_explore_rounded),
+        _zoneMilestone(strings, 10, zoneCount, Icons.map_rounded),
       ],
     );
   }
@@ -125,13 +183,16 @@ class FootprintProgression {
   }
 
   static String _titleFor(AppStrings strings, int level) {
-    if (level >= 18) {
+    if (level >= 28) {
       return strings.rankUrbanLegend;
     }
-    if (level >= 14) {
+    if (level >= 22) {
+      return strings.rankUrbanLegend;
+    }
+    if (level >= 16) {
       return strings.rankCityCartographer;
     }
-    if (level >= 10) {
+    if (level >= 11) {
       return strings.rankZoneHunter;
     }
     if (level >= 7) {
@@ -141,5 +202,117 @@ class FootprintProgression {
       return strings.rankStreetExplorer;
     }
     return strings.rankFirstSteps;
+  }
+
+  static ProgressionAchievement _pointsMilestone(
+    AppStrings strings,
+    int points,
+    int totalPoints,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementPointsTitle(points),
+      description: strings.achievementPointsBody(points),
+      icon: icon,
+      unlocked: totalPoints >= points,
+    );
+  }
+
+  static ProgressionAchievement _knownMilestone(
+    AppStrings strings,
+    int kilometers,
+    double knownKilometers,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementKnownKmTitle(kilometers),
+      description: strings.achievementKnownKmBody(kilometers),
+      icon: icon,
+      unlocked: knownKilometers >= kilometers,
+    );
+  }
+
+  static ProgressionAchievement _todayMilestone(
+    AppStrings strings,
+    int kilometers,
+    double traveledTodayKilometers,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementTodayKmTitle(kilometers),
+      description: strings.achievementTodayKmBody(kilometers),
+      icon: icon,
+      unlocked: traveledTodayKilometers >= kilometers,
+    );
+  }
+
+  static ProgressionAchievement _distanceMilestone(
+    AppStrings strings,
+    int kilometers,
+    double totalDistanceKilometers,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementTotalDistanceTitle(kilometers),
+      description: strings.achievementTotalDistanceBody(kilometers),
+      icon: icon,
+      unlocked: totalDistanceKilometers >= kilometers,
+    );
+  }
+
+  static ProgressionAchievement _stepsMilestone(
+    AppStrings strings,
+    int steps,
+    int dailySteps,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementStepsTitle(steps),
+      description: strings.achievementStepsBody(steps),
+      icon: icon,
+      unlocked: dailySteps >= steps,
+    );
+  }
+
+  static ProgressionAchievement _zoneMilestone(
+    AppStrings strings,
+    int zones,
+    int zoneCount,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementZonesTitle(zones),
+      description: strings.achievementZonesBody(zones),
+      icon: icon,
+      unlocked: zoneCount >= zones,
+    );
+  }
+
+  static ProgressionAchievement _coverageMilestone(
+    AppStrings strings,
+    int percent,
+    double primaryCoverage,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementCoverageTitle(percent),
+      description: strings.achievementCoverageBody(percent),
+      icon: icon,
+      unlocked: primaryCoverage >= (percent / 100),
+    );
+  }
+
+  static ProgressionAchievement _vehicleMilestone(
+    AppStrings strings,
+    int kilometers,
+    double vehicleKilometers,
+    IconData icon,
+  ) {
+    return ProgressionAchievement(
+      title: strings.achievementVehicleTitle(kilometers),
+      description: strings.achievementVehicleBody(kilometers),
+      icon: icon,
+      unlocked: vehicleKilometers >= kilometers,
+    );
   }
 }
