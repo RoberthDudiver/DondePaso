@@ -88,34 +88,49 @@ class _FogPainter extends CustomPainter {
                       (cell.visits.clamp(1, 10) * 0.045) +
                       ((cell.coverageWeight - 1) * 0.12)))
               .clamp(0.18, 0.78);
-          final blurRadius = (14 + (cell.visits.clamp(1, 8) * 2.4)).toDouble();
-          final edgeWidth = (8 + (cell.visits.clamp(1, 8) * 1.0)).toDouble();
+          final innerBlurRadius =
+              (2.8 + (cell.visits.clamp(1, 8) * 0.45)).toDouble();
+          final shadowBlurRadius =
+              (4.2 + (cell.visits.clamp(1, 8) * 0.55)).toDouble();
+          final shadowWidth = (3.6 + (cell.visits.clamp(1, 8) * 0.28))
+              .toDouble();
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
-              ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
-              ..color = Colors.white.withValues(alpha: clarity * 0.18),
+              ..color = Colors.white.withValues(alpha: clarity * 0.34),
           );
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = edgeWidth
               ..maskFilter = MaskFilter.blur(
                 BlurStyle.normal,
-                blurRadius * 0.62,
+                innerBlurRadius,
               )
-              ..color = Colors.white.withValues(alpha: clarity * 0.54),
+              ..color = Colors.white.withValues(alpha: clarity * 0.14),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.srcOver
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = shadowWidth
+              ..maskFilter = MaskFilter.blur(
+                BlurStyle.normal,
+                shadowBlurRadius,
+              )
+              ..color = const Color(0xFF000000).withValues(
+                alpha: 0.18 + (clarity * 0.14),
+              ),
           );
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
               ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.8
-              ..color = Colors.white.withValues(alpha: clarity * 0.22),
+              ..strokeWidth = 1.2
+              ..color = Colors.white.withValues(alpha: clarity * 0.12),
           );
         }
         continue;
@@ -200,12 +215,27 @@ class _FogPainter extends CustomPainter {
       return null;
     }
 
+    final center = projectedPoints.fold(
+          Offset.zero,
+          (sum, point) => sum + point,
+        ) /
+        projectedPoints.length.toDouble();
+    const visualScale = 0.72;
+    final insetPoints = projectedPoints
+        .map(
+          (point) => Offset(
+            center.dx + ((point.dx - center.dx) * visualScale),
+            center.dy + ((point.dy - center.dy) * visualScale),
+          ),
+        )
+        .toList(growable: false);
+
     final path = ui.Path();
-    for (var index = 0; index < projectedPoints.length; index++) {
+    for (var index = 0; index < insetPoints.length; index++) {
       if (index == 0) {
-        path.moveTo(projectedPoints[index].dx, projectedPoints[index].dy);
+        path.moveTo(insetPoints[index].dx, insetPoints[index].dy);
       } else {
-        path.lineTo(projectedPoints[index].dx, projectedPoints[index].dy);
+        path.lineTo(insetPoints[index].dx, insetPoints[index].dy);
       }
     }
 
