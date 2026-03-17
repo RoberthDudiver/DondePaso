@@ -71,7 +71,7 @@ class _FogPainter extends CustomPainter {
 
     canvas.drawRect(
       bounds,
-      Paint()..color = const Color(0xFF020202).withValues(alpha: 0.97),
+      Paint()..color = const Color(0xFF020202).withValues(alpha: 0.88),
     );
 
     for (final cell in cells) {
@@ -97,8 +97,16 @@ class _FogPainter extends CustomPainter {
           canvas.drawPath(
             path,
             Paint()
+              ..blendMode = BlendMode.plus
+              ..color = const Color(0xFFFFB84D).withValues(
+                alpha: 0.04 + (clarity * 0.08),
+              ),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
               ..blendMode = BlendMode.dstOut
-              ..color = Colors.white.withValues(alpha: clarity * 0.34),
+              ..color = Colors.white.withValues(alpha: clarity * 0.52),
           );
           canvas.drawPath(
             path,
@@ -108,7 +116,7 @@ class _FogPainter extends CustomPainter {
                 BlurStyle.normal,
                 innerBlurRadius,
               )
-              ..color = Colors.white.withValues(alpha: clarity * 0.14),
+              ..color = Colors.white.withValues(alpha: clarity * 0.22),
           );
           canvas.drawPath(
             path,
@@ -127,10 +135,31 @@ class _FogPainter extends CustomPainter {
           canvas.drawPath(
             path,
             Paint()
+              ..blendMode = BlendMode.plus
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.8
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.6)
+              ..color = const Color(0xFFFFB84D).withValues(
+                alpha: 0.08 + (clarity * 0.10),
+              ),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
               ..blendMode = BlendMode.dstOut
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.2
-              ..color = Colors.white.withValues(alpha: clarity * 0.12),
+              ..color = Colors.white.withValues(alpha: clarity * 0.16),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.srcOver
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.0
+              ..color = const Color(0xFFFFD36F).withValues(
+                alpha: 0.08 + (clarity * 0.11),
+              ),
           );
         }
         continue;

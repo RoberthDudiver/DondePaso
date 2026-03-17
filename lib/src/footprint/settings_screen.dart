@@ -8,6 +8,68 @@ import 'footprint_progression.dart';
 import 'footprint_zones.dart';
 import 'zone_name_service.dart';
 
+Route<void> buildFootprintOverviewRoute({
+  required int totalPoints,
+  required double knownKilometers,
+  required double traveledTodayKilometers,
+  required double totalDistanceKilometers,
+  required int dailySteps,
+  required String activityLabel,
+  required FootprintZonesSnapshot zonesSnapshot,
+  required ProgressionSnapshot? progression,
+}) {
+  return MaterialPageRoute<void>(
+    builder: (_) => _OverviewScreen(
+      totalPoints: totalPoints,
+      knownKilometers: knownKilometers,
+      traveledTodayKilometers: traveledTodayKilometers,
+      totalDistanceKilometers: totalDistanceKilometers,
+      dailySteps: dailySteps,
+      activityLabel: activityLabel,
+      zonesSnapshot: zonesSnapshot,
+      progression: progression,
+    ),
+  );
+}
+
+Route<void> buildFootprintAchievementsRoute({
+  required ProgressionSnapshot? progression,
+}) {
+  return MaterialPageRoute<void>(
+    builder: (_) => _AchievementsScreen(progression: progression),
+  );
+}
+
+Route<void> buildFootprintProgressRoute({
+  required int totalPoints,
+  required double knownKilometers,
+  required double traveledTodayKilometers,
+  required double totalDistanceKilometers,
+  required int dailySteps,
+  required String activityLabel,
+  required bool stepSensorAvailable,
+}) {
+  return MaterialPageRoute<void>(
+    builder: (_) => _ProgressAndMovementScreen(
+      totalPoints: totalPoints,
+      knownKilometers: knownKilometers,
+      traveledTodayKilometers: traveledTodayKilometers,
+      totalDistanceKilometers: totalDistanceKilometers,
+      dailySteps: dailySteps,
+      activityLabel: activityLabel,
+      stepSensorAvailable: stepSensorAvailable,
+    ),
+  );
+}
+
+Route<void> buildFootprintZonesRoute({
+  required FootprintZonesSnapshot zonesSnapshot,
+}) {
+  return MaterialPageRoute<void>(
+    builder: (_) => _ZonesScreen(zonesSnapshot: zonesSnapshot),
+  );
+}
+
 class FootprintSettingsScreen extends StatelessWidget {
   const FootprintSettingsScreen({
     super.key,
@@ -378,7 +440,7 @@ class _AchievementsScreen extends StatelessWidget {
                     crossAxisCount: 2,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio: 0.95,
+                    mainAxisExtent: 190,
                   ),
                   itemCount: data.achievements.length,
                   itemBuilder: (context, index) {
@@ -1117,16 +1179,22 @@ class _AchievementTile extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             achievement.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            achievement.description,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withValues(alpha: 0.72),
-              height: 1.35,
+          Expanded(
+            child: Text(
+              achievement.description,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.72),
+                height: 1.35,
+              ),
             ),
           ),
         ],
