@@ -28,6 +28,22 @@ class AppStrings {
   bool get isSpanish => language == AppLanguage.spanish;
 
   String get appTitle => 'DondePaso';
+  String get cityPromptTop =>
+      isSpanish ? 'Cuanto de tu ciudad' : 'How much of your city';
+  String get cityPromptHighlight =>
+      isSpanish ? 'has explorado de verdad?' : 'have you really explored?';
+  String get frequentedLabel =>
+      isSpanish ? 'Frecuentas' : 'Frequented';
+  String get discoveredLabel =>
+      isSpanish ? 'Descubriste' : 'Discovered';
+  String zonesCount(int count) =>
+      isSpanish ? '$count zonas' : '$count zones';
+  String get cityExploration => isSpanish ? 'Exploracion urbana' : 'City exploration';
+  String get trails => isSpanish ? 'Recorridos' : 'Trails';
+  String get data => isSpanish ? 'Datos' : 'Data';
+  String get exploreMoreHint => isSpanish
+      ? 'Como un mapa de mundo abierto, pero con tu ciudad real.'
+      : 'Like an open-world map, but with your real city.';
   String get points => isSpanish ? 'Puntos' : 'Points';
   String get known => isSpanish ? 'Conocido' : 'Known';
   String get today => isSpanish ? 'Hoy' : 'Today';
