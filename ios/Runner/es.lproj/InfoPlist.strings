@@ -1,0 +1,5 @@
+"NSLocationWhenInUseUsageDescription" = "DondePaso usa tu ubicacion para revelar las calles por las que realmente te mueves.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Necesitamos tu ubicacion siempre para que tu mapa siga descubriendo lugares aunque cierres la app.";
+"NSLocationAlwaysUsageDescription" = "Necesitamos acceso continuo a la ubicacion para que el rastreo pasivo no se detenga.";
+"NSFaceIDUsageDescription" = "DondePaso usa Face ID o la seguridad del telefono para proteger tu mapa local.";
+"NSMotionUsageDescription" = "DondePaso usa movimiento para calcular pasos diarios de forma local.";

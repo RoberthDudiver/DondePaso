@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement for DondePaso
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. DondePaso works best when features stay clear, private, and easy to understand.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: I want a clearer way to understand how much of my neighborhood I have actually explored.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: Add a simple exploration percentage view for the current city area.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: Why does it fit DondePaso?
+      description: Explain why it matches the app's vision.
+      placeholder: It reinforces the open-world discovery feeling without adding noise.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - UX / onboarding
+        - Map visualization
+        - Background tracking
+        - Battery optimization
+        - Privacy / legal
+        - Community / docs
+        - Other
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs or concerns
+      description: Mention privacy, battery, complexity, or platform limitations if relevant.

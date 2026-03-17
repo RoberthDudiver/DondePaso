@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a bug or regression in DondePaso
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please share enough context so we can reproduce it.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly and briefly.
+      placeholder: The app stops updating the map after the screen turns off...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us how to reproduce the issue.
+      placeholder: |
+        1. Open the app
+        2. Grant location permissions
+        3. Lock the phone
+        4. Walk for 10 minutes
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The map should keep revealing nearby streets.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: Samsung S24 Ultra, Moto e40, iPhone 14...
+  - type: input
+    id: os
+    attributes:
+      label: OS version
+      placeholder: Android 15, Android 16, iOS 18...
+  - type: textarea
+    id: extra
+    attributes:
+      label: Extra context
+      description: Logs, screenshots, videos, battery settings, permission state, or anything else that helps.
