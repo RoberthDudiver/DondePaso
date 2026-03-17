@@ -4,13 +4,14 @@ import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
 import '../background/tracking_preferences.dart';
+import 'footprint_backup_service.dart';
 import 'footprint_cell.dart';
+import 'footprint_h3_grid.dart';
 import 'footprint_storage.dart';
 
 const footprintBucketStep = 0.00022;
 const footprintRevisitGap = Duration(minutes: 2);
 const footprintForgetAfter = Duration(days: 14);
-const footprintKnownKilometersPerCell = 0.032;
 
 final Distance _distance = const Distance();
 
@@ -46,7 +47,12 @@ class FootprintProgress {
   static Timer? _flushTimer;
 
   static Future<FootprintSnapshot> loadSnapshot() async {
-    final storageState = await FootprintStorage().load();
+    final storage = FootprintStorage();
+    var storageState = await storage.load();
+    storageState = await _migrateLegacyCellsIfNeeded(
+      storage: storage,
+      storageState: storageState,
+    );
     _cachedStorageState = storageState;
     return _snapshotFromState(storageState, DateTime.now());
   }
@@ -57,10 +63,14 @@ class FootprintProgress {
     bool persistImmediately = true,
   }) async {
     final storage = FootprintStorage();
-    final storageState = _cachedStorageState ?? await storage.load();
+    final initialState = _cachedStorageState ?? await storage.load();
+    final storageState = await _migrateLegacyCellsIfNeeded(
+      storage: storage,
+      storageState: initialState,
+    );
     final now = at ?? DateTime.now();
     final cellsByKey = <String, FootprintCell>{
-      for (final cell in storageState.cells) _keyFor(cell.latLng): cell,
+      for (final cell in storageState.cells) cell.storageKey: cell,
     };
     var totalPoints = storageState.totalPoints;
     var totalDistanceMeters = storageState.totalDistanceMeters;
@@ -85,14 +95,12 @@ class FootprintProgress {
       }
     }
 
-    final key = _keyFor(point);
+    final key = FootprintH3Grid.keyForPoint(point);
     final existingCell = cellsByKey[key];
 
     if (existingCell == null) {
-      cellsByKey[key] = FootprintCell(
-        latitude: _snap(point.latitude),
-        longitude: _snap(point.longitude),
-        visits: 1,
+      cellsByKey[key] = FootprintH3Grid.cellForPoint(
+        point,
         lastSeen: now,
       );
       totalPoints += 120;
@@ -114,6 +122,7 @@ class FootprintProgress {
 
     final nextState = FootprintStorageState(
       cells: cellsByKey.values.toList(),
+      legacyCells: storageState.legacyCells,
       onboardingSeen: storageState.onboardingSeen,
       totalPoints: totalPoints,
       totalDistanceMeters: totalDistanceMeters,
@@ -169,7 +178,10 @@ class FootprintProgress {
     return cells.fold<double>(0, (sum, cell) {
       final freshness = freshnessFor(cell, now);
       final weight = 1 + math.min(0.45, (cell.visits - 1) * 0.06);
-      return sum + (footprintKnownKilometersPerCell * freshness * weight);
+      return sum +
+          (FootprintH3Grid.knownKilometersContribution(cell) *
+              freshness *
+              weight);
     });
   }
 
@@ -220,7 +232,24 @@ class FootprintProgress {
       lastLatLng: storageState.lastLatLng,
       lastTrackedAt: storageState.lastTrackedAt,
     );
+    await FootprintBackupService.writeAutomaticBackup(storageState);
     _lastFlushAt = DateTime.now();
+  }
+
+  static Future<FootprintStorageState> _migrateLegacyCellsIfNeeded({
+    required FootprintStorage storage,
+    required FootprintStorageState storageState,
+  }) async {
+    if (!storageState.needsH3Migration) {
+      return storageState;
+    }
+
+    final migratedCells = FootprintH3Grid.migrateLegacyCells(
+      storageState.legacyCells,
+    );
+    final migratedState = storageState.copyWith(cells: migratedCells);
+    await _saveState(storage, migratedState);
+    return migratedState;
   }
 
   static FootprintSnapshot _snapshotFromState(
@@ -254,15 +283,5 @@ class FootprintProgress {
     return storageState.todayDistanceDayKey == _dayKeyFor(now)
         ? storageState.todayDistanceMeters
         : 0;
-  }
-
-  static String _keyFor(LatLng point) {
-    final lat = _snap(point.latitude).toStringAsFixed(5);
-    final lng = _snap(point.longitude).toStringAsFixed(5);
-    return '$lat:$lng';
-  }
-
-  static double _snap(double value) {
-    return (value / footprintBucketStep).roundToDouble() * footprintBucketStep;
   }
 }

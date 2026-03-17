@@ -1,8 +1,11 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'footprint_cell.dart';
+import 'footprint_h3_grid.dart';
 
 class FootprintFogLayer extends StatelessWidget {
   const FootprintFogLayer({
@@ -77,6 +80,32 @@ class _FogPainter extends CustomPainter {
         continue;
       }
 
+      if (cell.isH3) {
+        final path = _pathForHexCell(cell);
+        if (path != null) {
+          final clarity = (freshness *
+                  (0.28 +
+                      (cell.visits.clamp(1, 10) * 0.045) +
+                      ((cell.coverageWeight - 1) * 0.12)))
+              .clamp(0.18, 0.78);
+          final blurRadius = (10 + (cell.visits.clamp(1, 8) * 1.8)).toDouble();
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.dstOut
+              ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
+              ..color = Colors.white.withValues(alpha: clarity * 0.38),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.dstOut
+              ..color = Colors.white.withValues(alpha: clarity),
+          );
+        }
+        continue;
+      }
+
       final center = camera.projectAtZoom(cell.latLng) - camera.pixelOrigin;
       final radius = _pixelRadiusForMeters(
         revealMeters + (cell.visits.clamp(0, 6) * 1.5),
@@ -141,6 +170,25 @@ class _FogPainter extends CustomPainter {
     final ratio =
         1 - (now.difference(cell.lastSeen).inSeconds / forgetAfter.inSeconds);
     return ratio.clamp(0, 1).toDouble();
+  }
+
+  ui.Path? _pathForHexCell(FootprintCell cell) {
+    final points = FootprintH3Grid.boundaryForCell(cell);
+    if (points.isEmpty) {
+      return null;
+    }
+
+    final path = ui.Path();
+    for (var index = 0; index < points.length; index++) {
+      final projected = camera.projectAtZoom(points[index]) - camera.pixelOrigin;
+      if (index == 0) {
+        path.moveTo(projected.dx, projected.dy);
+      } else {
+        path.lineTo(projected.dx, projected.dy);
+      }
+    }
+    path.close();
+    return path;
   }
 
   double _pixelRadiusForMeters(num meters, LatLng point) {

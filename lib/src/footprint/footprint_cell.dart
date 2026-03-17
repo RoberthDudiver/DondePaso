@@ -8,14 +8,21 @@ class FootprintCell {
     required this.longitude,
     required this.visits,
     required this.lastSeen,
+    this.h3Index,
+    this.coverageWeight = 1,
   });
 
   final double latitude;
   final double longitude;
   final int visits;
   final DateTime lastSeen;
+  final String? h3Index;
+  final double coverageWeight;
 
   LatLng get latLng => LatLng(latitude, longitude);
+  bool get isH3 => h3Index != null;
+  String get storageKey =>
+      h3Index ?? '${latitude.toStringAsFixed(5)}:${longitude.toStringAsFixed(5)}';
 
   FootprintCell refresh(DateTime timestamp) {
     return FootprintCell(
@@ -23,6 +30,8 @@ class FootprintCell {
       longitude: longitude,
       visits: visits,
       lastSeen: timestamp,
+      h3Index: h3Index,
+      coverageWeight: coverageWeight,
     );
   }
 
@@ -32,6 +41,26 @@ class FootprintCell {
       longitude: longitude,
       visits: visits + 1,
       lastSeen: timestamp,
+      h3Index: h3Index,
+      coverageWeight: coverageWeight,
+    );
+  }
+
+  FootprintCell copyWith({
+    double? latitude,
+    double? longitude,
+    int? visits,
+    DateTime? lastSeen,
+    String? h3Index,
+    double? coverageWeight,
+  }) {
+    return FootprintCell(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      visits: visits ?? this.visits,
+      lastSeen: lastSeen ?? this.lastSeen,
+      h3Index: h3Index ?? this.h3Index,
+      coverageWeight: coverageWeight ?? this.coverageWeight,
     );
   }
 
@@ -41,6 +70,8 @@ class FootprintCell {
       'longitude': longitude,
       'visits': visits,
       'lastSeen': lastSeen.toIso8601String(),
+      if (h3Index != null) 'h3Index': h3Index,
+      'coverageWeight': coverageWeight,
     };
   }
 
@@ -52,6 +83,8 @@ class FootprintCell {
       lastSeen: DateTime.parse(
         (map['lastSeen'] as String?) ?? DateTime.now().toIso8601String(),
       ),
+      h3Index: map['h3Index'] as String?,
+      coverageWeight: (map['coverageWeight'] as num?)?.toDouble() ?? 1,
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 enum AppLanguage { english, spanish }
 
@@ -41,6 +42,7 @@ class AppStrings {
   String get delete => isSpanish ? 'Borrar' : 'Delete';
   String get close => isSpanish ? 'Cerrar' : 'Close';
   String get ok => isSpanish ? 'Ok' : 'OK';
+  String get restore => isSpanish ? 'Restaurar' : 'Restore';
   String get openSettings => isSpanish ? 'Ajustes' : 'Settings';
   String get openGps => isSpanish ? 'Abrir GPS' : 'Open GPS';
   String get whereAmI => isSpanish ? 'Donde estoy' : 'Where I am';
@@ -48,10 +50,15 @@ class AppStrings {
   String get off => isSpanish ? 'Apagado' : 'Off';
   String get tracking => isSpanish ? 'Seguimiento' : 'Tracking';
   String get map => isSpanish ? 'Mapa' : 'Map';
+  String get zones => isSpanish ? 'Zonas' : 'Zones';
+  String get backup => isSpanish ? 'Backup' : 'Backup';
   String get privacy => isSpanish ? 'Privacidad' : 'Privacy';
   String get termsAndPrivacy =>
       isSpanish ? 'Terminos y privacidad' : 'Terms and privacy';
   String get movement => isSpanish ? 'Movimiento' : 'Movement';
+  String get level => isSpanish ? 'Nivel' : 'Level';
+  String get achievements => isSpanish ? 'Logros' : 'Achievements';
+  String get medals => isSpanish ? 'Medallas' : 'Badges';
   String get yourProgress => isSpanish ? 'Tu progreso' : 'Your progress';
   String get knownKm => isSpanish ? 'Km conocidos' : 'Known km';
   String get totalKnownKm =>
@@ -91,6 +98,17 @@ class AppStrings {
   String get status => isSpanish ? 'Estado' : 'Status';
   String get fading => isSpanish ? 'Olvido' : 'Fade';
   String get todaySteps => isSpanish ? 'Pasos hoy' : 'Steps today';
+  String get discovered => isSpanish ? 'Descubierto' : 'Discovered';
+  String get mainZone => isSpanish ? 'Zona principal' : 'Main zone';
+  String get zonesBody => isSpanish
+      ? 'Tu mapa se agrupa en zonas amplias para mostrar donde realmente has abierto mas territorio.'
+      : 'Your map is grouped into broader zones to show where you have actually opened up the most territory.';
+  String zoneCoverageLabel(int percent) =>
+      isSpanish ? '$percent% descubierto' : '$percent% discovered';
+  String zoneCellsLabel(int cells) =>
+      isSpanish ? '$cells hexagonos' : '$cells hexagons';
+  String zoneVisitsLabel(int visits) =>
+      isSpanish ? '$visits visitas' : '$visits visits';
   String get activityPulse => isSpanish ? 'Pulso activo' : 'Activity pulse';
   String get localOnly => isSpanish ? 'Solo local' : 'Local only';
   String get locked => isSpanish ? 'Bloqueado' : 'Locked';
@@ -181,7 +199,146 @@ class AppStrings {
   String get batteryHint => isSpanish
       ? 'En Android conviene sacar el ahorro de bateria para que tu mapa siga revelandose sin cortes.'
       : 'On Android it helps to disable battery saving so your map can keep revealing itself without interruptions.';
+  String get backupBody => isSpanish
+      ? 'Guarda una copia local de tu mapa para actualizar con mas tranquilidad y poder recuperar tu progreso reciente.'
+      : 'Keep a local copy of your map so updates feel safer and you can recover recent progress if needed.';
+  String get exportBackup => isSpanish ? 'Exportar backup' : 'Export backup';
+  String get restoreBackup =>
+      isSpanish ? 'Restaurar ultimo backup' : 'Restore latest backup';
+  String get backupExported => isSpanish
+      ? 'Backup listo para compartir o guardar.'
+      : 'Backup ready to share or save.';
+  String get backupMissing => isSpanish
+      ? 'Todavia no hay un backup local para restaurar.'
+      : 'There is no local backup to restore yet.';
+  String get backupRestored => isSpanish
+      ? 'Backup restaurado.'
+      : 'Backup restored.';
+  String get restoreBackupTitle => isSpanish
+      ? 'Restaurar backup'
+      : 'Restore backup';
+  String get restoreBackupBody => isSpanish
+      ? 'Se reemplazara tu mapa actual por el ultimo backup local guardado en este telefono.'
+      : 'Your current map will be replaced by the latest local backup saved on this phone.';
+  String get backupWillRestart => isSpanish
+      ? 'Luego puedes seguir explorando normalmente.'
+      : 'You can keep exploring normally afterwards.';
+  String get rankFirstSteps =>
+      isSpanish ? 'Primeros pasos' : 'First steps';
+  String get rankStreetExplorer =>
+      isSpanish ? 'Explorador de calles' : 'Street explorer';
+  String get rankOpenWorldWalker =>
+      isSpanish ? 'Caminante de mundo abierto' : 'Open-world walker';
+  String get rankZoneHunter =>
+      isSpanish ? 'Cazador de zonas' : 'Zone hunter';
+  String get rankCityCartographer =>
+      isSpanish ? 'Cartografo urbano' : 'City cartographer';
+  String get rankUrbanLegend =>
+      isSpanish ? 'Leyenda urbana' : 'Urban legend';
+  String levelValue(int level) => isSpanish ? 'Nivel $level' : 'Level $level';
+  String nextLevelLabel(String value) =>
+      isSpanish ? 'Siguiente: $value' : 'Next: $value';
+  String unlockedAchievementsLabel(int unlocked, int total) => isSpanish
+      ? '$unlocked de $total logros'
+      : '$unlocked of $total achievements';
+  String get achievementsBody => isSpanish
+      ? 'Tus puntos ahora desbloquean niveles, rangos y medallas para que el mapa se sienta mas juego y menos contador.'
+      : 'Your points now unlock levels, ranks, and badges so the map feels more like a game and less like a raw counter.';
+  String get achievementFirstTraceTitle =>
+      isSpanish ? 'Primera huella' : 'First trace';
+  String get achievementFirstTraceBody => isSpanish
+      ? 'Revela tus primeras calles.'
+      : 'Reveal your first streets.';
+  String get achievementMapStarterTitle =>
+      isSpanish ? 'Mapa en marcha' : 'Map starter';
+  String get achievementMapStarterBody => isSpanish
+      ? 'Supera los 1K puntos.'
+      : 'Reach 1K points.';
+  String get achievementNeighborhoodTitle =>
+      isSpanish ? 'Barrio abierto' : 'Neighborhood unlocked';
+  String get achievementNeighborhoodBody => isSpanish
+      ? 'Conoce al menos 1 km real de entorno.'
+      : 'Know at least 1 real km of your surroundings.';
+  String get achievementRoutineBreakerTitle =>
+      isSpanish ? 'Romper la rutina' : 'Routine breaker';
+  String get achievementRoutineBreakerBody => isSpanish
+      ? 'Llega a 3.5 km conocidos.'
+      : 'Reach 3.5 known km.';
+  String get achievementZoneKeeperTitle =>
+      isSpanish ? 'Guardia de zona' : 'Zone keeper';
+  String get achievementZoneKeeperBody => isSpanish
+      ? 'Descubre casi la mitad de tu zona principal.'
+      : 'Reveal almost half of your main zone.';
+  String get achievementCityPulseTitle =>
+      isSpanish ? 'Pulso de ciudad' : 'City pulse';
+  String get achievementCityPulseBody => isSpanish
+      ? 'Recorre 5 km en un dia.'
+      : 'Travel 5 km in a day.';
+  String get achievementStepExplorerTitle =>
+      isSpanish ? 'Explorador de pasos' : 'Step explorer';
+  String get achievementStepExplorerBody => isSpanish
+      ? 'Alcanza 10K pasos en un dia.'
+      : 'Hit 10K steps in a day.';
+  String get achievementMultiZoneTitle =>
+      isSpanish ? 'Mundo expandido' : 'Expanded world';
+  String get achievementMultiZoneBody => isSpanish
+      ? 'Abre al menos 3 zonas diferentes.'
+      : 'Open at least 3 different zones.';
   String get community => isSpanish ? 'Comunidad' : 'Community';
+  String get generalOverview =>
+      isSpanish ? 'Resumen general' : 'Overview';
+  String get generalOverviewBody => isSpanish
+      ? 'Una vista rapida de tu mapa, tu movimiento y el estado general de tu progreso.'
+      : 'A quick view of your map, movement, and overall progress.';
+  String get achievementsAndLevels =>
+      isSpanish ? 'Logros y niveles' : 'Achievements and levels';
+  String get achievementsAndLevelsBody => isSpanish
+      ? 'Tus medallas, niveles y rangos en una pantalla mas clara.'
+      : 'Your badges, levels, and ranks in a cleaner screen.';
+  String get progressAndMovement =>
+      isSpanish ? 'Progreso y movimiento' : 'Progress and movement';
+  String get progressAndMovementBody => isSpanish
+      ? 'Puntos, kilometros, pasos y ritmo diario sin mezclarlo con otras cosas.'
+      : 'Points, kilometers, steps, and daily rhythm without mixing everything together.';
+  String get mapAndBackup =>
+      isSpanish ? 'Mapa, ajustes y backup' : 'Map, settings and backup';
+  String get mapAndBackupBody => isSpanish
+      ? 'Controla el rastreo, el olvido del mapa, permisos y respaldo local.'
+      : 'Control tracking, map fading, permissions, and local backups.';
+  String get updateSafetyTitle => isSpanish
+      ? 'Antes de actualizar'
+      : 'Before updating';
+  String get updateSafetyBody => isSpanish
+      ? 'Exporta un backup manual antes de instalar una version nueva. Asi no dependes de que Android conserve los datos locales.'
+      : 'Export a manual backup before installing a new version. That way you do not depend on Android preserving local data.';
+  String get totalDistance =>
+      isSpanish ? 'Km recorridos total' : 'Total distance';
+  String get activeZones =>
+      isSpanish ? 'Zonas activas' : 'Active zones';
+  String get unlockedAchievements =>
+      isSpanish ? 'Logros desbloqueados' : 'Unlocked achievements';
+  String get primaryZoneSummaryBody => isSpanish
+      ? 'La zona que mas has abierto hasta ahora.'
+      : 'The area you have opened the most so far.';
+  String get noAchievementsYet => isSpanish
+      ? 'Todavia no hay logros desbloqueados. Tu mapa recien esta empezando a abrirse.'
+      : 'No achievements unlocked yet. Your map is only starting to open up.';
+  String get stepSensorStatus =>
+      isSpanish ? 'Estado del sensor de pasos' : 'Step sensor status';
+  String get mapControlBody => isSpanish
+      ? 'Herramientas delicadas del mapa y de tu progreso local.'
+      : 'Sensitive tools for your map and local progress.';
+  String get noZonesYet => isSpanish
+      ? 'Todavia no hay suficientes zonas activas para mostrar una vista clara.'
+      : 'There are not enough active zones yet to show a clear view.';
+  String get zoneFreshness =>
+      isSpanish ? 'Actividad reciente' : 'Recent activity';
+  String get settingsHubTitle => isSpanish
+      ? 'Todo lo demas vive aqui'
+      : 'Everything else lives here';
+  String get settingsHubBody => isSpanish
+      ? 'La home queda limpia para el mapa. Desde aqui entras al resumen, logros, zonas, comunidad y controles del mapa.'
+      : 'The home stays clean for the map. From here you can open the overview, achievements, zones, community, and map controls.';
   String get communityBody => isSpanish
       ? 'Mira quienes estan construyendo DondePaso contigo y agradece a quienes ya dejaron huella en el proyecto.'
       : 'See who is building DondePaso with you and celebrate the people already leaving a mark on the project.';
@@ -218,6 +375,11 @@ class AppStrings {
       isSpanish ? '$prs PRs · $commits commits' : '$prs PRs · $commits commits';
   String communityScoreValue(int score) =>
       isSpanish ? 'Score $score' : 'Score $score';
+
+  String formatCompactNumber(num value) {
+    final formatter = NumberFormat.compact(locale: isSpanish ? 'es' : 'en');
+    return formatter.format(value);
+  }
 
   String get resetDialogTitle => isSpanish ? 'Borrar mapa' : 'Clear map';
   String get resetDialogBody => isSpanish

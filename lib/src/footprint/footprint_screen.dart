@@ -11,10 +11,13 @@ import '../activity/daily_activity_tracker.dart';
 import '../background/passive_tracking_service.dart';
 import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
+import 'footprint_backup_service.dart';
 import 'footprint_cell.dart';
 import 'footprint_fog_layer.dart';
 import 'footprint_progress.dart';
+import 'footprint_progression.dart';
 import 'footprint_storage.dart';
+import 'footprint_zones.dart';
 import 'settings_screen.dart';
 
 const _defaultCenter = LatLng(-34.6037, -58.3816);
@@ -44,11 +47,17 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   int _totalPoints = 0;
   double _todayDistanceKilometers = 0;
+  double _totalDistanceKilometers = 0;
   PassiveTrackingPreferences _trackingPreferences =
       PassiveTrackingPreferences.defaultPreferences;
   DateTime? _lastTrackedAt;
   LatLng? _currentLocation;
   List<FootprintCell> _cells = const [];
+  FootprintZonesSnapshot _zonesSnapshot = const FootprintZonesSnapshot(
+    primaryZone: null,
+    zones: [],
+  );
+  ProgressionSnapshot? _progression;
 
   @override
   void initState() {
@@ -88,7 +97,16 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   void _onActivityChanged() {
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _progression = FootprintProgression.build(
+          strings: AppStrings.of(context),
+          totalPoints: _totalPoints,
+          knownKilometers: _knownKilometers,
+          traveledTodayKilometers: _todayDistanceKilometers,
+          dailySteps: _activityTracker.dailySteps,
+          zonesSnapshot: _zonesSnapshot,
+        );
+      });
     }
   }
 
@@ -134,10 +152,28 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _cells = snapshot.cells;
       _totalPoints = snapshot.totalPoints;
       _todayDistanceKilometers = FootprintProgress.todayKilometersFor(snapshot);
+      _totalDistanceKilometers = FootprintProgress.totalDistanceKilometersFor(
+        snapshot,
+      );
       _trackingPreferences = snapshot.trackingPreferences;
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _currentLocation = snapshot.lastLatLng;
       _lastTrackedAt = snapshot.lastTrackedAt;
+      _zonesSnapshot = FootprintZones.build(
+        cells: snapshot.cells,
+        now: DateTime.now(),
+      );
+      _progression = FootprintProgression.build(
+        strings: AppStrings.of(context),
+        totalPoints: snapshot.totalPoints,
+        knownKilometers: FootprintProgress.knownKilometersFor(
+          snapshot.cells,
+          DateTime.now(),
+        ),
+        traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
+        dailySteps: _activityTracker.dailySteps,
+        zonesSnapshot: _zonesSnapshot,
+      );
     });
   }
 
@@ -221,9 +257,27 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _cells = snapshot.cells;
       _totalPoints = snapshot.totalPoints;
       _todayDistanceKilometers = FootprintProgress.todayKilometersFor(snapshot);
+      _totalDistanceKilometers = FootprintProgress.totalDistanceKilometersFor(
+        snapshot,
+      );
       _currentLocation = point;
       _lastTrackedAt = snapshot.lastTrackedAt;
       _hasSeenOnboarding = snapshot.onboardingSeen;
+      _zonesSnapshot = FootprintZones.build(
+        cells: snapshot.cells,
+        now: DateTime.now(),
+      );
+      _progression = FootprintProgression.build(
+        strings: AppStrings.of(context),
+        totalPoints: snapshot.totalPoints,
+        knownKilometers: FootprintProgress.knownKilometersFor(
+          snapshot.cells,
+          DateTime.now(),
+        ),
+        traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
+        dailySteps: _activityTracker.dailySteps,
+        zonesSnapshot: _zonesSnapshot,
+      );
     });
 
     if (moveMap) {
@@ -397,6 +451,71 @@ class _FootprintScreenState extends State<FootprintScreen> {
     await openAppSettings();
   }
 
+  Future<void> _exportBackup() async {
+    final strings = context.strings;
+    await FootprintProgress.flushPending();
+    await FootprintBackupService.shareLatestBackup();
+    _showMessage(strings.backupExported);
+  }
+
+  Future<void> _restoreLatestBackup() async {
+    final strings = context.strings;
+    final shouldRestore =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(strings.restoreBackupTitle),
+              content: Text(
+                '${strings.restoreBackupBody}\n\n${strings.backupWillRestart}',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(strings.cancel),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(strings.restore),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (!shouldRestore) {
+      return;
+    }
+
+    await FootprintProgress.flushPending();
+    final backupState = await FootprintBackupService.loadLatestBackup();
+    if (backupState == null) {
+      _showMessage(strings.backupMissing);
+      return;
+    }
+
+    await stopPassiveTrackingService();
+    await FootprintStorage().overwriteState(backupState);
+    FootprintProgress.invalidateCache();
+    await _reloadFromStorage();
+    await _refreshPermissionState();
+    await _startLiveLocationPreview();
+
+    if (backupState.passiveTrackingEnabled) {
+      await ensurePassiveTrackingServiceRunning();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isTracking = backupState.passiveTrackingEnabled;
+    });
+    _showMessage(strings.backupRestored);
+  }
+
   Future<void> _requestAlwaysPermissionFromBanner() async {
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.always) {
@@ -470,11 +589,14 @@ class _FootprintScreenState extends State<FootprintScreen> {
     setState(() {
       _cells = const [];
       _totalPoints = 0;
+      _totalDistanceKilometers = 0;
       _currentLocation = null;
       _lastTrackedAt = null;
       _isTracking = false;
       _hasSeenOnboarding = false;
       _isFollowMode = true;
+      _zonesSnapshot = const FootprintZonesSnapshot(primaryZone: null, zones: []);
+      _progression = null;
     });
   }
 
@@ -487,6 +609,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
             totalPoints: _totalPoints,
             knownKilometers: _knownKilometers,
             traveledTodayKilometers: _todayDistanceKilometers,
+            totalDistanceKilometers: _totalDistanceKilometers,
             dailySteps: _activityTracker.dailySteps,
             activityLabel: _activityLabel(strings),
             stepSensorAvailable: _activityTracker.sensorAvailable,
@@ -499,6 +622,10 @@ class _FootprintScreenState extends State<FootprintScreen> {
             onTogglePassiveTracking: _setPassiveTracking,
             onUpdateTrackingPreferences: _updateTrackingPreferences,
             onOpenPermissions: _openPermissions,
+            onExportBackup: _exportBackup,
+            onRestoreBackup: _restoreLatestBackup,
+            zonesSnapshot: _zonesSnapshot,
+            progression: _progression,
             onClearMap: _clearProgress,
           );
         },
@@ -518,7 +645,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
     return FootprintProgress.knownKilometersFor(_cells, DateTime.now());
   }
 
-  String get _pointsLabel => '$_totalPoints pts';
+  String get _pointsLabel =>
+      AppStrings.of(context).formatCompactNumber(_totalPoints);
 
   String get _knownKilometersLabel =>
       '${_knownKilometers.toStringAsFixed(1)} km';
@@ -548,6 +676,11 @@ class _FootprintScreenState extends State<FootprintScreen> {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final now = DateTime.now();
+    final compactHomeEnabled = now.microsecondsSinceEpoch >= 0;
+
+    if (compactHomeEnabled) {
+      return _buildCompactHome(context, strings, now);
+    }
 
     return Scaffold(
       body: Stack(
@@ -646,6 +779,22 @@ class _FootprintScreenState extends State<FootprintScreen> {
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
               child: Column(
                 children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          strings.appTitle,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: _openSettingsScreen,
+                        icon: const Icon(Icons.dashboard_customize_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   if (_needsAlwaysPermission) ...[
                     _AlwaysPermissionBanner(
                       onPressed: _requestAlwaysPermissionFromBanner,
@@ -663,27 +812,16 @@ class _FootprintScreenState extends State<FootprintScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _MetricPill(
-                          label: strings.today,
+                          label: strings.traveledTodayKm,
                           value: _todayDistanceLabel,
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton.filledTonal(
-                        onPressed: _openSettingsScreen,
-                        icon: const Icon(Icons.tune_rounded),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _MetricPill(
-                          label: strings.totalKnownKm,
-                          value: _knownKilometersLabel,
-                        ),
-                      ),
-                    ],
+                  _MetricPill(
+                    label: strings.totalKnownKm,
+                    value: _knownKilometersLabel,
                   ),
                   const SizedBox(height: 10),
                   Align(
@@ -695,6 +833,11 @@ class _FootprintScreenState extends State<FootprintScreen> {
                         _TagChip(label: strings.localOnly),
                         _TagChip(label: strings.locked),
                         _TagChip(label: strings.noCloud),
+                        if (_progression != null)
+                          _TagChip(
+                            label:
+                                '${strings.levelValue(_progression!.level)} · ${_progression!.title}',
+                          ),
                       ],
                     ),
                   ),
@@ -763,6 +906,207 @@ class _FootprintScreenState extends State<FootprintScreen> {
     );
   }
 
+  Widget _buildCompactHome(
+    BuildContext context,
+    AppStrings strings,
+    DateTime now,
+  ) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF030303), Color(0xFF0A0D07)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _currentLocation ?? _defaultCenter,
+                  initialZoom: 15,
+                  minZoom: 3,
+                  maxZoom: 18.5,
+                  onPositionChanged: (_, hasGesture) {
+                    if (hasGesture && _isFollowMode) {
+                      setState(() {
+                        _isFollowMode = false;
+                      });
+                    }
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.dudiver.dondepaso',
+                    tileBuilder: (context, child, tile) {
+                      return ColorFiltered(
+                        colorFilter: const ColorFilter.matrix([
+                          0.88,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0.93,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0.93,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          1,
+                          0,
+                        ]),
+                        child: child,
+                      );
+                    },
+                  ),
+                  FootprintFogLayer(
+                    cells: _cells,
+                    currentLocation: _currentLocation,
+                    now: now,
+                    forgetAfter: footprintForgetAfter,
+                    revealMeters: _revealMeters,
+                  ),
+                  if (_currentLocation != null)
+                    CircleLayer(
+                      circles: [
+                        CircleMarker(
+                          point: _currentLocation!,
+                          radius: 12,
+                          useRadiusInMeter: false,
+                          color: const Color(0x33B8FF8C),
+                          borderColor: const Color(0x66B8FF8C),
+                          borderStrokeWidth: 1,
+                        ),
+                        CircleMarker(
+                          point: _currentLocation!,
+                          radius: 5,
+                          useRadiusInMeter: false,
+                          color: const Color(0xFFB8FF8C),
+                          borderColor: Colors.black,
+                          borderStrokeWidth: 1.6,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          strings.appTitle,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: _openSettingsScreen,
+                        icon: const Icon(Icons.dashboard_customize_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (_needsAlwaysPermission) ...[
+                    _AlwaysPermissionBanner(
+                      onPressed: _requestAlwaysPermissionFromBanner,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricPill(
+                          label: strings.points,
+                          value: _pointsLabel,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MetricPill(
+                          label: strings.traveledTodayKm,
+                          value: _todayDistanceLabel,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _MetricPill(
+                    label: strings.totalKnownKm,
+                    value: _knownKilometersLabel,
+                  ),
+                  const Spacer(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (!_isTracking)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: FilledButton.tonalIcon(
+                            onPressed: _activatePassiveTracking,
+                            icon: const Icon(Icons.radar_rounded),
+                            label: Text(strings.passive),
+                          ),
+                        ),
+                      FloatingActionButton.small(
+                        heroTag: 'follow_me',
+                        tooltip: strings.whereAmI,
+                        onPressed: _centerOnCurrentLocation,
+                        child: _isLocating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                ),
+                              )
+                            : Icon(
+                                _isFollowMode
+                                    ? Icons.navigation_rounded
+                                    : Icons.my_location_rounded,
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isBooting)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0xEE030303),
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFFB8FF8C)),
+                ),
+              ),
+            ),
+          if (!_isBooting && !_hasSeenOnboarding)
+            Positioned.fill(
+              child: _OnboardingOverlay(onStart: _activatePassiveTracking),
+            ),
+        ],
+      ),
+    );
+  }
+
   String _timeLabel(AppStrings strings, DateTime timestamp) {
     final delta = DateTime.now().difference(timestamp);
     if (delta.inMinutes < 1) {
@@ -772,6 +1116,143 @@ class _FootprintScreenState extends State<FootprintScreen> {
       return strings.lastCaptureMinutes(delta.inMinutes);
     }
     return strings.lastCaptureHours(delta.inHours);
+  }
+}
+
+class _PrimaryZoneCard extends StatelessWidget {
+  const _PrimaryZoneCard({required this.zone});
+
+  final FootprintZone zone;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final coveragePercent = (zone.discoveredRatio * 100).round();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strings.mainZone,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            zone.title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: zone.discoveredRatio,
+              minHeight: 9,
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFB8FF8C)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _TagChip(label: strings.zoneCoverageLabel(coveragePercent)),
+              _TagChip(label: strings.zoneCellsLabel(zone.discoveredCells)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LevelBanner extends StatelessWidget {
+  const _LevelBanner({required this.progression});
+
+  final ProgressionSnapshot progression;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF141110), Color(0xFF172313)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: const Color(0xFFB8FF8C),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Text(
+                '${progression.level}',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  progression.title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  strings.nextLevelLabel(
+                    strings.formatCompactNumber(progression.nextLevelPoints),
+                  ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            strings.unlockedAchievementsLabel(
+              progression.unlockedAchievements,
+              progression.achievements.length,
+            ),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

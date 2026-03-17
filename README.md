@@ -219,3 +219,21 @@ DondePaso is now open to community feedback and contributions.
 - Use `Discussions` for ideas, questions, and product conversations.
 - Use `Issues` for bugs and concrete feature requests.
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for collaboration guidelines.
+
+## License
+
+Starting with the current repository state, DondePaso is shared under the
+`PolyForm Noncommercial 1.0.0` license.
+
+That means:
+
+- you can read the code
+- you can learn from it
+- you can modify it for noncommercial purposes
+- you cannot commercially exploit the project or ship commercial derivatives without separate permission from the author
+
+Important:
+
+- earlier snapshots that were already published under MIT remain MIT for those specific versions
+- see [LICENSE](LICENSE) for the current noncommercial license
+- see [LICENSE-MIT-legacy.md](LICENSE-MIT-legacy.md) for the previous MIT notice kept for historical clarity

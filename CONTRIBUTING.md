@@ -34,6 +34,13 @@ This project is meant to grow with the community around a simple idea: revealing
 - Honest communication about permissions and limitations
 - Exploration over surveillance language
 
+## License note
+
+The current repository is shared under a noncommercial license.
+
+- Contributions are made with the understanding that the repo is not available for third-party commercial exploitation by default.
+- If you need commercial rights, contact the project owner directly.
+
 ## Reporting bugs
 
 When possible, include:
