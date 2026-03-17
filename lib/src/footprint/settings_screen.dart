@@ -13,6 +13,7 @@ Route<void> buildFootprintOverviewRoute({
   required double knownKilometers,
   required double traveledTodayKilometers,
   required double totalDistanceKilometers,
+  required double vehicleDistanceKilometers,
   required int dailySteps,
   required String activityLabel,
   required FootprintZonesSnapshot zonesSnapshot,
@@ -24,6 +25,7 @@ Route<void> buildFootprintOverviewRoute({
       knownKilometers: knownKilometers,
       traveledTodayKilometers: traveledTodayKilometers,
       totalDistanceKilometers: totalDistanceKilometers,
+      vehicleDistanceKilometers: vehicleDistanceKilometers,
       dailySteps: dailySteps,
       activityLabel: activityLabel,
       zonesSnapshot: zonesSnapshot,
@@ -45,6 +47,7 @@ Route<void> buildFootprintProgressRoute({
   required double knownKilometers,
   required double traveledTodayKilometers,
   required double totalDistanceKilometers,
+  required double vehicleDistanceKilometers,
   required int dailySteps,
   required String activityLabel,
   required bool stepSensorAvailable,
@@ -55,6 +58,7 @@ Route<void> buildFootprintProgressRoute({
       knownKilometers: knownKilometers,
       traveledTodayKilometers: traveledTodayKilometers,
       totalDistanceKilometers: totalDistanceKilometers,
+      vehicleDistanceKilometers: vehicleDistanceKilometers,
       dailySteps: dailySteps,
       activityLabel: activityLabel,
       stepSensorAvailable: stepSensorAvailable,
@@ -77,15 +81,18 @@ class FootprintSettingsScreen extends StatelessWidget {
     required this.knownKilometers,
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
+    required this.vehicleDistanceKilometers,
     required this.dailySteps,
     required this.activityLabel,
     required this.stepSensorAvailable,
     required this.trackingActive,
     required this.trackingPreferences,
+    required this.lightMapMode,
     required this.forgetAfterLabel,
     required this.onRequestTracking,
     required this.onTogglePassiveTracking,
     required this.onUpdateTrackingPreferences,
+    required this.onToggleLightMapMode,
     required this.onOpenPermissions,
     required this.onExportBackup,
     required this.onRestoreBackup,
@@ -98,16 +105,19 @@ class FootprintSettingsScreen extends StatelessWidget {
   final double knownKilometers;
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
+  final double vehicleDistanceKilometers;
   final int dailySteps;
   final String activityLabel;
   final bool stepSensorAvailable;
   final bool trackingActive;
   final PassiveTrackingPreferences trackingPreferences;
+  final bool lightMapMode;
   final String forgetAfterLabel;
   final Future<void> Function() onRequestTracking;
   final Future<void> Function(bool enabled) onTogglePassiveTracking;
   final Future<void> Function(PassiveTrackingPreferences preferences)
   onUpdateTrackingPreferences;
+  final Future<void> Function(bool enabled) onToggleLightMapMode;
   final Future<void> Function() onOpenPermissions;
   final Future<void> Function() onExportBackup;
   final Future<void> Function() onRestoreBackup;
@@ -128,6 +138,7 @@ class FootprintSettingsScreen extends StatelessWidget {
             points: strings.formatCompactNumber(totalPoints),
             knownKilometers: knownKilometers,
             traveledTodayKilometers: traveledTodayKilometers,
+            vehicleDistanceKilometers: vehicleDistanceKilometers,
           ),
           const SizedBox(height: 14),
           _HubCard(
@@ -142,6 +153,7 @@ class FootprintSettingsScreen extends StatelessWidget {
                     knownKilometers: knownKilometers,
                     traveledTodayKilometers: traveledTodayKilometers,
                     totalDistanceKilometers: totalDistanceKilometers,
+                    vehicleDistanceKilometers: vehicleDistanceKilometers,
                     dailySteps: dailySteps,
                     activityLabel: activityLabel,
                     zonesSnapshot: zonesSnapshot,
@@ -179,6 +191,7 @@ class FootprintSettingsScreen extends StatelessWidget {
                     knownKilometers: knownKilometers,
                     traveledTodayKilometers: traveledTodayKilometers,
                     totalDistanceKilometers: totalDistanceKilometers,
+                    vehicleDistanceKilometers: vehicleDistanceKilometers,
                     dailySteps: dailySteps,
                     activityLabel: activityLabel,
                     stepSensorAvailable: stepSensorAvailable,
@@ -211,10 +224,12 @@ class FootprintSettingsScreen extends StatelessWidget {
                   builder: (_) => _MapAndBackupScreen(
                     trackingActive: trackingActive,
                     trackingPreferences: trackingPreferences,
+                    lightMapMode: lightMapMode,
                     forgetAfterLabel: forgetAfterLabel,
                     onRequestTracking: onRequestTracking,
                     onTogglePassiveTracking: onTogglePassiveTracking,
                     onUpdateTrackingPreferences: onUpdateTrackingPreferences,
+                    onToggleLightMapMode: onToggleLightMapMode,
                     onOpenPermissions: onOpenPermissions,
                     onExportBackup: onExportBackup,
                     onRestoreBackup: onRestoreBackup,
@@ -262,6 +277,7 @@ class _OverviewScreen extends StatefulWidget {
     required this.knownKilometers,
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
+    required this.vehicleDistanceKilometers,
     required this.dailySteps,
     required this.activityLabel,
     required this.zonesSnapshot,
@@ -272,6 +288,7 @@ class _OverviewScreen extends StatefulWidget {
   final double knownKilometers;
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
+  final double vehicleDistanceKilometers;
   final int dailySteps;
   final String activityLabel;
   final FootprintZonesSnapshot zonesSnapshot;
@@ -303,7 +320,9 @@ class _OverviewScreenState extends State<_OverviewScreen> {
     }
 
     setState(() {
-      _primaryZoneName = name;
+      _primaryZoneName = ZoneNameService.looksTechnicalZoneTitle(name)
+          ? null
+          : name;
     });
   }
 
@@ -342,6 +361,11 @@ class _OverviewScreenState extends State<_OverviewScreen> {
                 _MetricCard(
                   label: strings.totalDistance,
                   value: '${widget.totalDistanceKilometers.toStringAsFixed(1)} km',
+                ),
+                _MetricCard(
+                  label: strings.vehicleDistance,
+                  value:
+                      '${widget.vehicleDistanceKilometers.toStringAsFixed(1)} km',
                 ),
               ],
             ),
@@ -460,6 +484,7 @@ class _ProgressAndMovementScreen extends StatelessWidget {
     required this.knownKilometers,
     required this.traveledTodayKilometers,
     required this.totalDistanceKilometers,
+    required this.vehicleDistanceKilometers,
     required this.dailySteps,
     required this.activityLabel,
     required this.stepSensorAvailable,
@@ -469,6 +494,7 @@ class _ProgressAndMovementScreen extends StatelessWidget {
   final double knownKilometers;
   final double traveledTodayKilometers;
   final double totalDistanceKilometers;
+  final double vehicleDistanceKilometers;
   final int dailySteps;
   final String activityLabel;
   final bool stepSensorAvailable;
@@ -504,6 +530,10 @@ class _ProgressAndMovementScreen extends StatelessWidget {
                 _MetricCard(
                   label: strings.totalDistance,
                   value: '${totalDistanceKilometers.toStringAsFixed(1)} km',
+                ),
+                _MetricCard(
+                  label: strings.vehicleDistance,
+                  value: '${vehicleDistanceKilometers.toStringAsFixed(1)} km',
                 ),
               ],
             ),
@@ -543,10 +573,12 @@ class _MapAndBackupScreen extends StatefulWidget {
   const _MapAndBackupScreen({
     required this.trackingActive,
     required this.trackingPreferences,
+    required this.lightMapMode,
     required this.forgetAfterLabel,
     required this.onRequestTracking,
     required this.onTogglePassiveTracking,
     required this.onUpdateTrackingPreferences,
+    required this.onToggleLightMapMode,
     required this.onOpenPermissions,
     required this.onExportBackup,
     required this.onRestoreBackup,
@@ -555,11 +587,13 @@ class _MapAndBackupScreen extends StatefulWidget {
 
   final bool trackingActive;
   final PassiveTrackingPreferences trackingPreferences;
+  final bool lightMapMode;
   final String forgetAfterLabel;
   final Future<void> Function() onRequestTracking;
   final Future<void> Function(bool enabled) onTogglePassiveTracking;
   final Future<void> Function(PassiveTrackingPreferences preferences)
   onUpdateTrackingPreferences;
+  final Future<void> Function(bool enabled) onToggleLightMapMode;
   final Future<void> Function() onOpenPermissions;
   final Future<void> Function() onExportBackup;
   final Future<void> Function() onRestoreBackup;
@@ -571,12 +605,14 @@ class _MapAndBackupScreen extends StatefulWidget {
 
 class _MapAndBackupScreenState extends State<_MapAndBackupScreen> {
   late bool _trackingActive;
+  late bool _lightMapMode;
   late PassiveTrackingPreferences _preferences;
 
   @override
   void initState() {
     super.initState();
     _trackingActive = widget.trackingActive;
+    _lightMapMode = widget.lightMapMode;
     _preferences = widget.trackingPreferences;
   }
 
@@ -606,6 +642,13 @@ class _MapAndBackupScreenState extends State<_MapAndBackupScreen> {
       _preferences = preferences;
     });
     await widget.onUpdateTrackingPreferences(preferences);
+  }
+
+  Future<void> _setLightMapMode(bool enabled) async {
+    setState(() {
+      _lightMapMode = enabled;
+    });
+    await widget.onToggleLightMapMode(enabled);
   }
 
   @override
@@ -686,11 +729,23 @@ class _MapAndBackupScreenState extends State<_MapAndBackupScreen> {
           _SectionPanel(
             title: strings.map,
             subtitle: strings.mapControlBody,
-            child: _ActionButtonRow(
-              icon: Icons.delete_outline_rounded,
-              label: strings.resetProgress,
-              isDanger: true,
-              onPressed: widget.onClearMap,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(strings.darkMapMode),
+                  subtitle: Text(strings.darkMapModeBody),
+                  value: _lightMapMode,
+                  onChanged: _setLightMapMode,
+                ),
+                const SizedBox(height: 10),
+                _ActionButtonRow(
+                  icon: Icons.delete_outline_rounded,
+                  label: strings.resetProgress,
+                  isDanger: true,
+                  onPressed: widget.onClearMap,
+                ),
+              ],
             ),
           ),
         ],
@@ -751,7 +806,12 @@ class _ZonesScreenState extends State<_ZonesScreen> {
               padding: const EdgeInsets.all(18),
               itemBuilder: (context, index) {
                 final zone = zones[index];
-                final displayName = _names[zone.zoneKey] ?? zone.title;
+                final strings = context.strings;
+                final rawName = (_names[zone.zoneKey] ?? zone.title).trim();
+                final displayName =
+                    ZoneNameService.looksTechnicalZoneTitle(rawName)
+                    ? ZoneNameService.fallbackDisplayName(strings: strings)
+                    : rawName;
                 return _SectionPanel(
                   title: displayName,
                   subtitle: strings.zoneCoverageLabel(
@@ -810,7 +870,9 @@ class _ZonesScreenState extends State<_ZonesScreen> {
 
     for (final zone in zones) {
       final displayName = (_names[zone.zoneKey] ?? zone.title).trim();
-      final normalized = displayName.toLowerCase();
+      final normalized = ZoneNameService.looksTechnicalZoneTitle(displayName)
+          ? zone.zoneKey
+          : displayName.toLowerCase();
       merged.update(
         normalized,
         (bucket) {
@@ -882,11 +944,13 @@ class _HubHero extends StatelessWidget {
     required this.points,
     required this.knownKilometers,
     required this.traveledTodayKilometers,
+    required this.vehicleDistanceKilometers,
   });
 
   final String points;
   final double knownKilometers;
   final double traveledTodayKilometers;
+  final double vehicleDistanceKilometers;
 
   @override
   Widget build(BuildContext context) {
@@ -933,6 +997,10 @@ class _HubHero extends StatelessWidget {
               _StatBadge(
                 label: strings.traveledTodayKm,
                 value: '${traveledTodayKilometers.toStringAsFixed(1)} km',
+              ),
+              _StatBadge(
+                label: strings.vehicleDistance,
+                value: '${vehicleDistanceKilometers.toStringAsFixed(1)} km',
               ),
             ],
           ),
@@ -1442,11 +1510,20 @@ class _ZoneSummaryRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          displayName ?? zone.title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        Builder(
+          builder: (context) {
+            final strings = context.strings;
+            final rawTitle = (displayName ?? zone.title).trim();
+            final title = ZoneNameService.looksTechnicalZoneTitle(rawTitle)
+                ? ZoneNameService.fallbackDisplayName(strings: strings)
+                : rawTitle;
+            return Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            );
+          },
         ),
         const SizedBox(height: 12),
         ClipRRect(

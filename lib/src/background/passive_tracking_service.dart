@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'tracking_preferences.dart';
 import '../footprint/footprint_progress.dart';
 import '../footprint/footprint_storage.dart';
+import '../footprint/footprint_transport.dart';
 import '../i18n/app_strings.dart';
 
 const trackingNotificationChannelId = 'tracking_foreground';
@@ -241,8 +242,13 @@ Future<void> _startBackgroundTrackingStream(ServiceInstance service) async {
 Future<void> _persistPosition(ServiceInstance service, Position position) async {
   final point = LatLng(position.latitude, position.longitude);
   await _updateAdaptiveMode(service, point, position);
+  final transportMode = detectTransportMode(
+    speedMetersPerSecond: position.speed > 0 ? position.speed : 0,
+    walkingHint: false,
+  );
   final snapshot = await FootprintProgress.recordVisit(
     point: point,
+    transportMode: transportMode,
     persistImmediately: false,
   );
   final strings = AppStrings.fromSystem();

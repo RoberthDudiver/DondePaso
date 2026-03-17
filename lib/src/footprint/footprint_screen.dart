@@ -11,11 +11,15 @@ import '../background/passive_tracking_service.dart';
 import '../background/tracking_preferences.dart';
 import '../i18n/app_strings.dart';
 import 'footprint_backup_service.dart';
+import 'footprint_block_layer.dart';
+import 'footprint_block_model.dart';
+import 'footprint_blocks.dart';
 import 'footprint_cell.dart';
 import 'footprint_fog_layer.dart';
 import 'footprint_progress.dart';
 import 'footprint_progression.dart';
 import 'footprint_storage.dart';
+import 'footprint_transport.dart';
 import 'footprint_zones.dart';
 import 'settings_screen.dart';
 import 'zone_name_service.dart';
@@ -45,10 +49,12 @@ class _FootprintScreenState extends State<FootprintScreen> {
   bool _isTracking = false;
   bool _isFollowMode = true;
   bool _needsAlwaysPermission = false;
+  bool _lightMapMode = false;
 
   int _totalPoints = 0;
   double _todayDistanceKilometers = 0;
   double _totalDistanceKilometers = 0;
+  double _vehicleDistanceKilometers = 0;
   PassiveTrackingPreferences _trackingPreferences =
       PassiveTrackingPreferences.defaultPreferences;
   DateTime? _lastTrackedAt;
@@ -60,6 +66,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
   );
   final Map<String, String> _zoneNames = <String, String>{};
   ProgressionSnapshot? _progression;
+  List<CapturedBlockSnapshot> _capturedBlocks = const [];
 
   @override
   void initState() {
@@ -105,6 +112,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
           totalPoints: _totalPoints,
           knownKilometers: _knownKilometers,
           traveledTodayKilometers: _todayDistanceKilometers,
+          totalDistanceKilometers: _totalDistanceKilometers,
+          vehicleKilometers: _vehicleDistanceKilometers,
           dailySteps: _activityTracker.dailySteps,
           zonesSnapshot: _zonesSnapshot,
         );
@@ -162,7 +171,11 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _totalDistanceKilometers = FootprintProgress.totalDistanceKilometersFor(
         snapshot,
       );
+      _vehicleDistanceKilometers = FootprintProgress.vehicleDistanceKilometersFor(
+        snapshot,
+      );
       _trackingPreferences = snapshot.trackingPreferences;
+      _lightMapMode = snapshot.lightMapMode;
       _hasSeenOnboarding = snapshot.onboardingSeen;
       _currentLocation = snapshot.lastLatLng;
       _lastTrackedAt = snapshot.lastTrackedAt;
@@ -175,12 +188,19 @@ class _FootprintScreenState extends State<FootprintScreen> {
           DateTime.now(),
         ),
         traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
+        totalDistanceKilometers: FootprintProgress.totalDistanceKilometersFor(
+          snapshot,
+        ),
+        vehicleKilometers: FootprintProgress.vehicleDistanceKilometersFor(
+          snapshot,
+        ),
         dailySteps: _activityTracker.dailySteps,
         zonesSnapshot: zonesSnapshot,
       );
     });
 
     unawaited(_loadZoneNames(zonesSnapshot));
+    unawaited(_loadCapturedBlocks(snapshot.lastLatLng));
   }
 
   Future<void> _refreshPermissionState() async {
@@ -254,7 +274,14 @@ class _FootprintScreenState extends State<FootprintScreen> {
     required bool moveMap,
   }) async {
     final point = LatLng(position.latitude, position.longitude);
-    final snapshot = await FootprintProgress.recordVisit(point: point);
+    final transportMode = detectTransportMode(
+      speedMetersPerSecond: position.speed > 0 ? position.speed : 0,
+      walkingHint: _activityTracker.isWalking,
+    );
+    final snapshot = await FootprintProgress.recordVisit(
+      point: point,
+      transportMode: transportMode,
+    );
     if (!mounted) {
       return;
     }
@@ -271,6 +298,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _totalDistanceKilometers = FootprintProgress.totalDistanceKilometersFor(
         snapshot,
       );
+      _vehicleDistanceKilometers = FootprintProgress.vehicleDistanceKilometersFor(
+        snapshot,
+      );
       _currentLocation = point;
       _lastTrackedAt = snapshot.lastTrackedAt;
       _hasSeenOnboarding = snapshot.onboardingSeen;
@@ -283,12 +313,19 @@ class _FootprintScreenState extends State<FootprintScreen> {
           DateTime.now(),
         ),
         traveledTodayKilometers: FootprintProgress.todayKilometersFor(snapshot),
+        totalDistanceKilometers: FootprintProgress.totalDistanceKilometersFor(
+          snapshot,
+        ),
+        vehicleKilometers: FootprintProgress.vehicleDistanceKilometersFor(
+          snapshot,
+        ),
         dailySteps: _activityTracker.dailySteps,
         zonesSnapshot: zonesSnapshot,
       );
     });
 
     unawaited(_loadZoneNames(zonesSnapshot));
+    unawaited(_loadCapturedBlocks(point));
 
     if (moveMap) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -587,6 +624,17 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
   }
 
+  Future<void> _setLightMapMode(bool enabled) async {
+    await FootprintStorage().setLightMapMode(enabled);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _lightMapMode = enabled;
+    });
+  }
+
   Future<void> _clearProgress() async {
     await stopPassiveTrackingService();
     await _positionSubscription?.cancel();
@@ -600,6 +648,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
       _cells = const [];
       _totalPoints = 0;
       _totalDistanceKilometers = 0;
+      _vehicleDistanceKilometers = 0;
+      _lightMapMode = false;
       _currentLocation = null;
       _lastTrackedAt = null;
       _isTracking = false;
@@ -620,17 +670,20 @@ class _FootprintScreenState extends State<FootprintScreen> {
             knownKilometers: _knownKilometers,
             traveledTodayKilometers: _todayDistanceKilometers,
             totalDistanceKilometers: _totalDistanceKilometers,
+            vehicleDistanceKilometers: _vehicleDistanceKilometers,
             dailySteps: _activityTracker.dailySteps,
             activityLabel: _activityLabel(strings),
             stepSensorAvailable: _activityTracker.sensorAvailable,
             trackingActive: _isTracking,
             trackingPreferences: _trackingPreferences,
+            lightMapMode: _lightMapMode,
             forgetAfterLabel: strings.forgetAfterDays(
               footprintForgetAfter.inDays,
             ),
             onRequestTracking: _activatePassiveTracking,
             onTogglePassiveTracking: _setPassiveTracking,
             onUpdateTrackingPreferences: _updateTrackingPreferences,
+            onToggleLightMapMode: _setLightMapMode,
             onOpenPermissions: _openPermissions,
             onExportBackup: _exportBackup,
             onRestoreBackup: _restoreLatestBackup,
@@ -677,22 +730,48 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
 
     final cached = _zoneNames[zone.zoneKey]?.trim();
-    if (cached != null && cached.isNotEmpty) {
+    if (cached != null &&
+        cached.isNotEmpty &&
+        !ZoneNameService.looksTechnicalZoneTitle(cached)) {
       return cached;
     }
 
-    if (zone.title.startsWith('Area ')) {
-      return strings.mainZone;
+    if (ZoneNameService.looksTechnicalZoneTitle(zone.title)) {
+      return ZoneNameService.fallbackDisplayName(strings: strings);
     }
 
     return zone.title;
+  }
+
+  Future<void> _loadCapturedBlocks(LatLng? center) async {
+    if (center == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _capturedBlocks = const [];
+      });
+      return;
+    }
+
+    final blocks = await FootprintBlocks.loadVisibleBlocks(
+      center: center,
+      now: DateTime.now(),
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _capturedBlocks = blocks;
+    });
   }
 
   int _zoneCountWhere(bool Function(FootprintZone zone) test) {
     final unique = <String>{};
     for (final zone in _zonesSnapshot.zones.where(test)) {
       final title = (_zoneNames[zone.zoneKey] ?? zone.title).trim();
-      if (title.isEmpty || title.startsWith('Area ')) {
+      if (title.isEmpty || ZoneNameService.looksTechnicalZoneTitle(title)) {
         unique.add(zone.zoneKey);
       } else {
         unique.add(title.toLowerCase());
@@ -709,6 +788,32 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   String get _todayDistanceLabel =>
       '${_todayDistanceKilometers.toStringAsFixed(1)} km';
+
+  FootprintTransportMode get _recentTransportMode {
+    final now = DateTime.now();
+    var walkingScore = 0.0;
+    var vehicleScore = 0.0;
+
+    for (final cell in _cells) {
+      final freshness =
+          1 -
+          (now.difference(cell.lastSeen).inSeconds / footprintForgetAfter.inSeconds);
+      final weight = freshness.clamp(0, 1).toDouble();
+      if (weight <= 0.35) {
+        continue;
+      }
+      walkingScore += cell.walkingVisits * weight;
+      vehicleScore += cell.vehicleVisits * weight;
+    }
+
+    if (vehicleScore >= walkingScore * 1.15 && vehicleScore > 0.8) {
+      return FootprintTransportMode.vehicle;
+    }
+    if (walkingScore >= vehicleScore * 1.15 && walkingScore > 0.8) {
+      return FootprintTransportMode.walking;
+    }
+    return FootprintTransportMode.unknown;
+  }
 
   String _activityLabel(AppStrings strings) {
     if (!_activityTracker.sensorAvailable ||
@@ -825,6 +930,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
                     now: now,
                     forgetAfter: footprintForgetAfter,
                     revealMeters: _revealMeters,
+                    lightMapMode: _lightMapMode,
                   ),
                   if (_currentLocation != null)
                     CircleLayer(
@@ -1030,15 +1136,31 @@ class _FootprintScreenState extends State<FootprintScreen> {
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.dudiver.dondepaso',
                           tileBuilder: (context, child, tile) {
+                            if (_lightMapMode) {
+                              return Opacity(
+                                opacity: 0.92,
+                                child: ColorFiltered(
+                                  colorFilter: const ColorFilter.matrix([
+                                    0.34, 0.34, 0.34, 0, 0,
+                                    0.34, 0.34, 0.34, 0, 0,
+                                    0.34, 0.34, 0.34, 0, 0,
+                                    0, 0, 0, 1, 0,
+                                  ]),
+                                  child: child,
+                                ),
+                              );
+                            }
                             return Opacity(
-                              opacity: 0.72,
+                              opacity: 0.88,
                               child: ColorFiltered(
-                                colorFilter: const ColorFilter.matrix([
-                                  0.54, 0.20, 0.14, 0, 0,
-                                  0.20, 0.50, 0.16, 0, 0,
-                                  0.16, 0.18, 0.46, 0, 0,
-                                  0, 0, 0, 1, 0,
-                                ]),
+                                colorFilter: ColorFilter.matrix(
+                                  const [
+                                    0.16, 0.16, 0.16, 0, 0,
+                                    0.16, 0.16, 0.16, 0, 0,
+                                    0.16, 0.16, 0.16, 0, 0,
+                                    0, 0, 0, 1, 0,
+                                  ],
+                                ),
                                 child: child,
                               ),
                             );
@@ -1050,7 +1172,14 @@ class _FootprintScreenState extends State<FootprintScreen> {
                           now: now,
                           forgetAfter: footprintForgetAfter,
                           revealMeters: _revealMeters,
+                          lightMapMode: _lightMapMode,
                         ),
+                        if (_capturedBlocks.isNotEmpty)
+                          FootprintBlockLayer(
+                            blocks: _capturedBlocks,
+                            now: now,
+                            lightMapMode: _lightMapMode,
+                          ),
                         if (_currentLocation != null)
                           CircleLayer(
                             circles: [
@@ -1071,12 +1200,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
                                 borderStrokeWidth: 1.6,
                               ),
                             ],
-                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  const Positioned.fill(
-                    child: IgnorePointer(child: _MapAtmosphereOverlay()),
                   ),
                 ],
               ),
@@ -1092,6 +1218,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
                       _GlassIconButton(
                         icon: Icons.menu_rounded,
                         onPressed: _openSettingsScreen,
+                        darkMode: _lightMapMode,
                       ),
                       Expanded(
                         child: Center(
@@ -1107,6 +1234,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
                             ? Icons.hourglass_top_rounded
                             : Icons.my_location_rounded,
                         onPressed: _centerOnCurrentLocation,
+                        darkMode: _lightMapMode,
                       ),
                     ],
                   ),
@@ -1125,7 +1253,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
                           title: strings.frequentedLabel,
                           value: strings.zonesCount(_frequentedZonesCount),
                           accentColor: const Color(0xFF7CC8FF),
-                          backgroundColor: const Color(0xAA10233A),
+                          backgroundColor: _lightMapMode
+                              ? const Color(0xD90B1522)
+                              : const Color(0xAA10233A),
                           icon: Icons.place_rounded,
                         ),
                       ),
@@ -1135,7 +1265,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
                           title: strings.discoveredLabel,
                           value: strings.zonesCount(_discoveredZonesCount),
                           accentColor: const Color(0xFFFFCB59),
-                          backgroundColor: const Color(0xAA3A2A12),
+                          backgroundColor: _lightMapMode
+                              ? const Color(0xD9281D0B)
+                              : const Color(0xAA3A2A12),
                           icon: Icons.favorite_rounded,
                         ),
                       ),
@@ -1147,6 +1279,23 @@ class _FootprintScreenState extends State<FootprintScreen> {
                     subtitle: strings.cityExploration,
                     percentLabel: '$explorationPercent%',
                     progress: _cityExplorationRatio,
+                    darkMode: _lightMapMode,
+                    transportBadge: _recentTransportMode == FootprintTransportMode.unknown
+                        ? null
+                        : _TransportModeBadge(
+                            label: _recentTransportMode ==
+                                    FootprintTransportMode.vehicle
+                                ? strings.byCar
+                                : strings.onFoot,
+                            icon: _recentTransportMode ==
+                                    FootprintTransportMode.vehicle
+                                ? Icons.directions_car_filled_rounded
+                                : Icons.directions_walk_rounded,
+                            color: _recentTransportMode ==
+                                    FootprintTransportMode.vehicle
+                                ? const Color(0xFF6EBBFF)
+                                : const Color(0xFFFFD26E),
+                          ),
                     footer: Row(
                       children: [
                         Expanded(
@@ -1174,6 +1323,7 @@ class _FootprintScreenState extends State<FootprintScreen> {
                   ),
                   const SizedBox(height: 10),
                   _BottomCommandBar(
+                    darkMode: _lightMapMode,
                     items: [
                       _BottomCommand(
                         icon: Icons.alt_route_rounded,
@@ -1215,6 +1365,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
                                   _todayDistanceKilometers,
                               totalDistanceKilometers:
                                   _totalDistanceKilometers,
+                              vehicleDistanceKilometers:
+                                  _vehicleDistanceKilometers,
                               dailySteps: _activityTracker.dailySteps,
                               activityLabel: _activityLabel(strings),
                               stepSensorAvailable:
@@ -1295,120 +1447,16 @@ class _FootprintLifecycleObserver with WidgetsBindingObserver {
   }
 }
 
-class _MapAtmosphereOverlay extends StatelessWidget {
-  const _MapAtmosphereOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color(0xBC090B10),
-            Color(0x260D1015),
-            Color(0xA607090D),
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0, 0.08),
-                  radius: 0.74,
-                  colors: [
-                    const Color(0x00FFB84D),
-                    const Color(0x12FFB84D),
-                    Colors.black.withValues(alpha: 0.42),
-                  ],
-                ),
-              ),
-            ),
-        ),
-        const Positioned(
-          left: -80,
-          top: 86,
-          child: _CloudBlob(width: 230, height: 180, alpha: 0.46),
-        ),
-        const Positioned(
-          right: -96,
-          top: 132,
-          child: _CloudBlob(width: 260, height: 210, alpha: 0.52),
-        ),
-        const Positioned(
-          left: -50,
-          bottom: -6,
-          child: _CloudBlob(width: 210, height: 150, alpha: 0.48),
-        ),
-        const Positioned(
-          right: -40,
-          bottom: 18,
-          child: _CloudBlob(width: 240, height: 170, alpha: 0.56),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.12,
-                colors: [
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.10),
-                  Colors.black.withValues(alpha: 0.34),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CloudBlob extends StatelessWidget {
-  const _CloudBlob({
-    required this.width,
-    required this.height,
-    required this.alpha,
-  });
-
-  final double width;
-  final double height;
-  final double alpha;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            colors: [
-              Colors.black.withValues(alpha: alpha),
-              Colors.black.withValues(alpha: alpha * 0.72),
-              Colors.black.withValues(alpha: 0),
-            ],
-            stops: const [0.18, 0.54, 1],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _GlassIconButton extends StatelessWidget {
-  const _GlassIconButton({required this.icon, required this.onPressed});
+  const _GlassIconButton({
+    required this.icon,
+    required this.onPressed,
+    required this.darkMode,
+  });
 
   final IconData icon;
   final Future<void> Function() onPressed;
+  final bool darkMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1423,9 +1471,11 @@ class _GlassIconButton extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.34),
+            color: Colors.black.withValues(alpha: darkMode ? 0.72 : 0.34),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: darkMode ? 0.12 : 0.08),
+            ),
           ),
           child: Icon(icon, color: Colors.white, size: 22),
         ),
@@ -1497,6 +1547,8 @@ class _ExplorationProgressCard extends StatelessWidget {
     required this.percentLabel,
     required this.progress,
     required this.footer,
+    required this.darkMode,
+    this.transportBadge,
   });
 
   final String title;
@@ -1504,6 +1556,8 @@ class _ExplorationProgressCard extends StatelessWidget {
   final String percentLabel;
   final double progress;
   final Widget footer;
+  final bool darkMode;
+  final Widget? transportBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -1511,9 +1565,11 @@ class _ExplorationProgressCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.42),
+        color: Colors.black.withValues(alpha: darkMode ? 0.78 : 0.42),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: darkMode ? 0.10 : 0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1540,6 +1596,10 @@ class _ExplorationProgressCard extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.64),
                       ),
                     ),
+                    if (transportBadge != null) ...[
+                      const SizedBox(height: 8),
+                      transportBadge!,
+                    ],
                   ],
                 ),
               ),
@@ -1565,6 +1625,44 @@ class _ExplorationProgressCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           footer,
+        ],
+      ),
+    );
+  }
+}
+
+class _TransportModeBadge extends StatelessWidget {
+  const _TransportModeBadge({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -1628,18 +1726,21 @@ class _BottomCommand {
 }
 
 class _BottomCommandBar extends StatelessWidget {
-  const _BottomCommandBar({required this.items});
+  const _BottomCommandBar({required this.items, required this.darkMode});
 
   final List<_BottomCommand> items;
+  final bool darkMode;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.36),
+        color: Colors.black.withValues(alpha: darkMode ? 0.76 : 0.36),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: darkMode ? 0.10 : 0.08),
+        ),
       ),
       child: Row(
         children: items

@@ -3,16 +3,35 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../i18n/app_strings.dart';
 import 'footprint_zones.dart';
 
 class ZoneNameService {
-  static const _cachePrefix = 'zone_name_cache_';
+  static const _cachePrefix = 'zone_name_cache_v2_';
+  static final RegExp _technicalZonePattern = RegExp(
+    r'^(area|zone)\s*\d+$',
+    caseSensitive: false,
+  );
+
+  static bool looksTechnicalZoneTitle(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) {
+      return true;
+    }
+    return _technicalZonePattern.hasMatch(text);
+  }
+
+  static String fallbackDisplayName({AppStrings? strings}) {
+    return (strings ?? AppStrings.fromSystem()).nearbyZone;
+  }
 
   Future<String> resolveName(FootprintZone zone) async {
     final cacheKey = '$_cachePrefix${zone.zoneKey}';
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(cacheKey);
-    if (cached != null && cached.isNotEmpty) {
+    if (cached != null &&
+        cached.isNotEmpty &&
+        !looksTechnicalZoneTitle(cached)) {
       return cached;
     }
 
@@ -20,7 +39,7 @@ class ZoneNameService {
       'format': 'jsonv2',
       'lat': zone.centerLatitude.toStringAsFixed(6),
       'lon': zone.centerLongitude.toStringAsFixed(6),
-      'zoom': '15',
+      'zoom': '14',
       'addressdetails': '1',
     });
 
@@ -43,20 +62,7 @@ class ZoneNameService {
             (payload['address'] as Map?) ?? const <String, dynamic>{},
           );
 
-      final rawName =
-          _firstNonEmpty(
-            address['suburb'],
-            address['neighbourhood'],
-            address['quarter'],
-            address['city_district'],
-            address['borough'],
-            address['town'],
-            address['village'],
-            address['city'],
-            payload['name'],
-            payload['display_name'],
-          ) ??
-          zone.title;
+      final rawName = _bestAreaName(address, payload) ?? zone.title;
       final name = _cleanName(rawName) ?? zone.title;
 
       await prefs.setString(cacheKey, name);
@@ -66,25 +72,41 @@ class ZoneNameService {
     }
   }
 
-  String? _firstNonEmpty(Object? a, [
-    Object? b,
-    Object? c,
-    Object? d,
-    Object? e,
-    Object? f,
-    Object? g,
-    Object? h,
-    Object? i,
-    Object? j,
-  ]) {
-    final values = [a, b, c, d, e, f, g, h, i, j];
-    for (final value in values) {
-      final text = value?.toString().trim();
-      if (text != null && text.isNotEmpty) {
-        return text;
-      }
+  String? _bestAreaName(
+    Map<String, dynamic> address,
+    Map<String, dynamic> payload,
+  ) {
+    final quarter = _cleanName(address['quarter']?.toString());
+    final neighbourhood = _cleanName(address['neighbourhood']?.toString());
+    final suburb = _cleanName(address['suburb']?.toString());
+    final cityDistrict = _cleanName(address['city_district']?.toString());
+    final borough = _cleanName(address['borough']?.toString());
+    final city = _cleanName(address['city']?.toString());
+    final town = _cleanName(address['town']?.toString());
+    final village = _cleanName(address['village']?.toString());
+
+    final local = quarter ?? neighbourhood;
+    final broader = suburb ?? cityDistrict ?? borough;
+
+    if (local != null && broader != null && !_sameLabel(local, broader)) {
+      return '$local · $broader';
     }
-    return null;
+
+    return local ??
+        broader ??
+        _cleanName(payload['name']?.toString()) ??
+        _cleanName(city) ??
+        _cleanName(town) ??
+        _cleanName(village) ??
+        _cleanName(address['road']?.toString()) ??
+        _cleanName(address['pedestrian']?.toString()) ??
+        _cleanName(address['residential']?.toString()) ??
+        _cleanName(address['commercial']?.toString()) ??
+        _cleanName(payload['display_name']?.toString());
+  }
+
+  bool _sameLabel(String a, String b) {
+    return a.trim().toLowerCase() == b.trim().toLowerCase();
   }
 
   String? _cleanName(String? value) {
@@ -95,6 +117,10 @@ class ZoneNameService {
 
     final firstSegment = text.split(',').first.trim();
     if (firstSegment.isEmpty) {
+      return null;
+    }
+
+    if (looksTechnicalZoneTitle(firstSegment)) {
       return null;
     }
 

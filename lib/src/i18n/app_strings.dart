@@ -116,6 +116,7 @@ class AppStrings {
   String get todaySteps => isSpanish ? 'Pasos hoy' : 'Steps today';
   String get discovered => isSpanish ? 'Descubierto' : 'Discovered';
   String get mainZone => isSpanish ? 'Zona principal' : 'Main zone';
+  String get nearbyZone => isSpanish ? 'Tu zona' : 'Your area';
   String get zonesBody => isSpanish
       ? 'Tu mapa se agrupa en zonas amplias para mostrar donde realmente has abierto mas territorio.'
       : 'Your map is grouped into broader zones to show where you have actually opened up the most territory.';
@@ -300,6 +301,54 @@ class AppStrings {
   String get achievementMultiZoneBody => isSpanish
       ? 'Abre al menos 3 zonas diferentes.'
       : 'Open at least 3 different zones.';
+  String achievementPointsTitle(int points) => isSpanish
+      ? '${formatCompactNumber(points)} puntos'
+      : '${formatCompactNumber(points)} points';
+  String achievementPointsBody(int points) => isSpanish
+      ? 'Supera ${formatCompactNumber(points)} puntos totales.'
+      : 'Reach ${formatCompactNumber(points)} total points.';
+  String achievementKnownKmTitle(int kilometers) => isSpanish
+      ? '$kilometers km conocidos'
+      : '$kilometers known km';
+  String achievementKnownKmBody(int kilometers) => isSpanish
+      ? 'Abre al menos $kilometers km reales de tu entorno.'
+      : 'Open at least $kilometers real km of your surroundings.';
+  String achievementTodayKmTitle(int kilometers) => isSpanish
+      ? '$kilometers km hoy'
+      : '$kilometers km today';
+  String achievementTodayKmBody(int kilometers) => isSpanish
+      ? 'Recorre $kilometers km en un solo dia.'
+      : 'Travel $kilometers km in a single day.';
+  String achievementTotalDistanceTitle(int kilometers) => isSpanish
+      ? '$kilometers km totales'
+      : '$kilometers total km';
+  String achievementTotalDistanceBody(int kilometers) => isSpanish
+      ? 'Acumula $kilometers km recorridos entre todas tus salidas.'
+      : 'Accumulate $kilometers km traveled across all your outings.';
+  String achievementStepsTitle(int steps) => isSpanish
+      ? '${formatCompactNumber(steps)} pasos'
+      : '${formatCompactNumber(steps)} steps';
+  String achievementStepsBody(int steps) => isSpanish
+      ? 'Llega a ${formatCompactNumber(steps)} pasos en un dia.'
+      : 'Reach ${formatCompactNumber(steps)} steps in a day.';
+  String achievementZonesTitle(int zones) => isSpanish
+      ? '$zones subzonas abiertas'
+      : '$zones subzones opened';
+  String achievementZonesBody(int zones) => isSpanish
+      ? 'Manten activas al menos $zones subzonas diferentes.'
+      : 'Keep at least $zones different subzones active.';
+  String achievementCoverageTitle(int percent) => isSpanish
+      ? '$percent% de subzona'
+      : '$percent% subzone';
+  String achievementCoverageBody(int percent) => isSpanish
+      ? 'Descubre $percent% de tu subzona principal.'
+      : 'Reveal $percent% of your main subzone.';
+  String achievementVehicleTitle(int kilometers) => isSpanish
+      ? '$kilometers km en auto'
+      : '$kilometers km by car';
+  String achievementVehicleBody(int kilometers) => isSpanish
+      ? 'Acumula $kilometers km recorridos en auto sin salirte del mapa.'
+      : 'Accumulate $kilometers km traveled by car without leaving the map behind.';
   String get community => isSpanish ? 'Comunidad' : 'Community';
   String get generalOverview =>
       isSpanish ? 'Resumen general' : 'Overview';
@@ -329,6 +378,11 @@ class AppStrings {
       : 'Export a manual backup before installing a new version. That way you do not depend on Android preserving local data.';
   String get totalDistance =>
       isSpanish ? 'Km recorridos total' : 'Total distance';
+  String get vehicleDistance =>
+      isSpanish ? 'Km en auto' : 'Km by car';
+  String get onFoot => isSpanish ? 'A pie' : 'On foot';
+  String get byCar => isSpanish ? 'En auto' : 'By car';
+  String get recentTrace => isSpanish ? 'Huella reciente' : 'Recent trace';
   String get activeZones =>
       isSpanish ? 'Zonas activas' : 'Active zones';
   String get unlockedAchievements =>
@@ -344,6 +398,11 @@ class AppStrings {
   String get mapControlBody => isSpanish
       ? 'Herramientas delicadas del mapa y de tu progreso local.'
       : 'Sensitive tools for your map and local progress.';
+  String get darkMapMode =>
+      isSpanish ? 'Mostrar mapa base' : 'Show base map';
+  String get darkMapModeBody => isSpanish
+      ? 'Apaga la mascara negra y deja ver el mapa normal, con la huella en un color calido para que siga destacando.'
+      : 'Turns off the black mask and shows the normal map, with the footprint in a warm color so it still stands out.';
   String get noZonesYet => isSpanish
       ? 'Todavia no hay suficientes zonas activas para mostrar una vista clara.'
       : 'There are not enough active zones yet to show a clear view.';
