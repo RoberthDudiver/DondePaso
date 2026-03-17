@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -89,38 +88,49 @@ class _FogPainter extends CustomPainter {
                       (cell.visits.clamp(1, 10) * 0.045) +
                       ((cell.coverageWeight - 1) * 0.12)))
               .clamp(0.18, 0.78);
-          final blurRadius = (14 + (cell.visits.clamp(1, 8) * 2.6)).toDouble();
-          final edgeWidth = (11 + (cell.visits.clamp(1, 8) * 1.6)).toDouble();
+          final innerBlurRadius =
+              (2.8 + (cell.visits.clamp(1, 8) * 0.45)).toDouble();
+          final shadowBlurRadius =
+              (4.2 + (cell.visits.clamp(1, 8) * 0.55)).toDouble();
+          final shadowWidth = (3.6 + (cell.visits.clamp(1, 8) * 0.28))
+              .toDouble();
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
-              ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
-              ..color = Colors.white.withValues(alpha: clarity * 0.18),
+              ..color = Colors.white.withValues(alpha: clarity * 0.34),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.dstOut
+              ..maskFilter = MaskFilter.blur(
+                BlurStyle.normal,
+                innerBlurRadius,
+              )
+              ..color = Colors.white.withValues(alpha: clarity * 0.14),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.srcOver
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = shadowWidth
+              ..maskFilter = MaskFilter.blur(
+                BlurStyle.normal,
+                shadowBlurRadius,
+              )
+              ..color = const Color(0xFF000000).withValues(
+                alpha: 0.18 + (clarity * 0.14),
+              ),
           );
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
               ..style = PaintingStyle.stroke
-              ..strokeWidth = edgeWidth
-              ..strokeJoin = StrokeJoin.round
-              ..strokeCap = StrokeCap.round
-              ..maskFilter = MaskFilter.blur(
-                BlurStyle.normal,
-                blurRadius * 0.82,
-              )
-              ..color = Colors.white.withValues(alpha: clarity * 0.56),
-          );
-          canvas.drawPath(
-            path,
-            Paint()
-              ..blendMode = BlendMode.dstOut
-              ..maskFilter = MaskFilter.blur(
-                BlurStyle.normal,
-                blurRadius * 0.42,
-              )
-              ..color = Colors.white.withValues(alpha: clarity * 0.14),
+              ..strokeWidth = 1.2
+              ..color = Colors.white.withValues(alpha: clarity * 0.12),
           );
         }
         continue;
@@ -205,43 +215,32 @@ class _FogPainter extends CustomPainter {
       return null;
     }
 
+    final center = projectedPoints.fold(
+          Offset.zero,
+          (sum, point) => sum + point,
+        ) /
+        projectedPoints.length.toDouble();
+    const visualScale = 0.72;
+    final insetPoints = projectedPoints
+        .map(
+          (point) => Offset(
+            center.dx + ((point.dx - center.dx) * visualScale),
+            center.dy + ((point.dy - center.dy) * visualScale),
+          ),
+        )
+        .toList(growable: false);
+
     final path = ui.Path();
-    for (var index = 0; index < projectedPoints.length; index++) {
-      final current = projectedPoints[index];
-      final previous =
-          projectedPoints[(index - 1 + projectedPoints.length) % projectedPoints.length];
-      final next = projectedPoints[(index + 1) % projectedPoints.length];
-
-      final previousDistance = (current - previous).distance;
-      final nextDistance = (next - current).distance;
-      final cornerRadius = math.min(previousDistance, nextDistance) * 0.26;
-      final effectiveRadius = cornerRadius.clamp(4.0, 12.0);
-
-      final start = _moveToward(current, previous, effectiveRadius);
-      final end = _moveToward(current, next, effectiveRadius);
-
+    for (var index = 0; index < insetPoints.length; index++) {
       if (index == 0) {
-        path.moveTo(start.dx, start.dy);
+        path.moveTo(insetPoints[index].dx, insetPoints[index].dy);
       } else {
-        path.lineTo(start.dx, start.dy);
+        path.lineTo(insetPoints[index].dx, insetPoints[index].dy);
       }
-
-      path.quadraticBezierTo(current.dx, current.dy, end.dx, end.dy);
     }
 
     path.close();
     return path;
-  }
-
-  Offset _moveToward(Offset from, Offset to, double distance) {
-    final vector = to - from;
-    final length = vector.distance;
-    if (length == 0 || distance <= 0) {
-      return from;
-    }
-
-    final scale = (distance / length).clamp(0.0, 1.0);
-    return Offset(from.dx + (vector.dx * scale), from.dy + (vector.dy * scale));
   }
 
   double _pixelRadiusForMeters(num meters, LatLng point) {
