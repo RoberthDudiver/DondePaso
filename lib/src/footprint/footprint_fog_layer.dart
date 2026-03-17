@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -88,19 +89,38 @@ class _FogPainter extends CustomPainter {
                       (cell.visits.clamp(1, 10) * 0.045) +
                       ((cell.coverageWeight - 1) * 0.12)))
               .clamp(0.18, 0.78);
-          final blurRadius = (10 + (cell.visits.clamp(1, 8) * 1.8)).toDouble();
+          final blurRadius = (14 + (cell.visits.clamp(1, 8) * 2.6)).toDouble();
+          final edgeWidth = (11 + (cell.visits.clamp(1, 8) * 1.6)).toDouble();
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
               ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
-              ..color = Colors.white.withValues(alpha: clarity * 0.38),
+              ..color = Colors.white.withValues(alpha: clarity * 0.18),
           );
           canvas.drawPath(
             path,
             Paint()
               ..blendMode = BlendMode.dstOut
-              ..color = Colors.white.withValues(alpha: clarity),
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = edgeWidth
+              ..strokeJoin = StrokeJoin.round
+              ..strokeCap = StrokeCap.round
+              ..maskFilter = MaskFilter.blur(
+                BlurStyle.normal,
+                blurRadius * 0.82,
+              )
+              ..color = Colors.white.withValues(alpha: clarity * 0.56),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..blendMode = BlendMode.dstOut
+              ..maskFilter = MaskFilter.blur(
+                BlurStyle.normal,
+                blurRadius * 0.42,
+              )
+              ..color = Colors.white.withValues(alpha: clarity * 0.14),
           );
         }
         continue;
@@ -178,17 +198,50 @@ class _FogPainter extends CustomPainter {
       return null;
     }
 
-    final path = ui.Path();
-    for (var index = 0; index < points.length; index++) {
-      final projected = camera.projectAtZoom(points[index]) - camera.pixelOrigin;
-      if (index == 0) {
-        path.moveTo(projected.dx, projected.dy);
-      } else {
-        path.lineTo(projected.dx, projected.dy);
-      }
+    final projectedPoints = points
+        .map((point) => camera.projectAtZoom(point) - camera.pixelOrigin)
+        .toList(growable: false);
+    if (projectedPoints.length < 3) {
+      return null;
     }
+
+    final path = ui.Path();
+    for (var index = 0; index < projectedPoints.length; index++) {
+      final current = projectedPoints[index];
+      final previous =
+          projectedPoints[(index - 1 + projectedPoints.length) % projectedPoints.length];
+      final next = projectedPoints[(index + 1) % projectedPoints.length];
+
+      final previousDistance = (current - previous).distance;
+      final nextDistance = (next - current).distance;
+      final cornerRadius = math.min(previousDistance, nextDistance) * 0.26;
+      final effectiveRadius = cornerRadius.clamp(4.0, 12.0);
+
+      final start = _moveToward(current, previous, effectiveRadius);
+      final end = _moveToward(current, next, effectiveRadius);
+
+      if (index == 0) {
+        path.moveTo(start.dx, start.dy);
+      } else {
+        path.lineTo(start.dx, start.dy);
+      }
+
+      path.quadraticBezierTo(current.dx, current.dy, end.dx, end.dy);
+    }
+
     path.close();
     return path;
+  }
+
+  Offset _moveToward(Offset from, Offset to, double distance) {
+    final vector = to - from;
+    final length = vector.distance;
+    if (length == 0 || distance <= 0) {
+      return from;
+    }
+
+    final scale = (distance / length).clamp(0.0, 1.0);
+    return Offset(from.dx + (vector.dx * scale), from.dy + (vector.dy * scale));
   }
 
   double _pixelRadiusForMeters(num meters, LatLng point) {
