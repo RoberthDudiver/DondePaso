@@ -1,15 +1,10 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:flutter/rendering.dart';
 
 import '../activity/daily_activity_tracker.dart';
 import '../background/passive_tracking_service.dart';
@@ -704,41 +699,48 @@ class _FootprintScreenState extends State<FootprintScreen> {
 
   Future<void> _shareMapCard() async {
     final strings = context.strings;
+    final primaryZoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
+    final explorationPercent = (_cityExplorationRatio * 100).round();
+
+    if (!mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(strings.shareMapTitle)),
+            ],
+          ),
+        );
+      },
+    );
+
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      final renderObject =
-          _shareCardKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (renderObject == null) {
-        _showMessage(strings.shareMapError);
-        return;
-      }
-
-      final image = await renderObject.toImage(pixelRatio: 3);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final bytes = byteData?.buffer.asUint8List();
-      if (bytes == null || bytes.isEmpty) {
-        _showMessage(strings.shareMapError);
-        return;
-      }
-
-      final directory = await getTemporaryDirectory();
-      final file = File(
-        '${directory.path}${Platform.pathSeparator}dondepaso_share_card.png',
-      );
-      await file.writeAsBytes(bytes, flush: true);
-
-      final primaryZoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
-      final explorationPercent = (_cityExplorationRatio * 100).round();
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'image/png')],
-          text: strings.shareMapBody(primaryZoneName, explorationPercent),
-          title: strings.shareMapTitle,
-        ),
+      await FootprintTimelapseService.generateAndShareCard(
+        strings: strings,
+        cells: _cells,
+        zoneName: primaryZoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: _totalPoints,
+        knownKilometers: _knownKilometers,
       );
     } catch (_) {
       _showMessage(strings.shareMapError);
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     }
   }
 
