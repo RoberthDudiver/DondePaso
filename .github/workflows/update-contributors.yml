@@ -2,11 +2,12 @@ name: Update Contributors
 
 on:
   schedule:
-    - cron: "0 3 * * 1"
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   generate-contributors:
@@ -26,14 +27,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python tools/generate_contributors.py
 
-      - name: Commit updated snapshot
-        run: |
-          if git diff --quiet -- assets/community/contributors.json; then
-            echo "No contributor changes detected."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/community/contributors.json
-          git commit -m "Update contributors snapshot"
-          git push
+      - name: Create pull request for updated snapshot
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          commit-message: "Update contributors snapshot"
+          branch: "codex/update-contributors-snapshot"
+          delete-branch: true
+          title: "Update contributors snapshot"
+          body: |
+            Automated update for `assets/community/contributors.json`.
+
+            This PR was created by the scheduled contributors workflow.
+          add-paths: |
+            assets/community/contributors.json
