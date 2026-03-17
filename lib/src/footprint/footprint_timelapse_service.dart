@@ -13,6 +13,7 @@ import '../i18n/app_strings.dart';
 import 'footprint_cell.dart';
 import 'footprint_h3_grid.dart';
 import 'footprint_timelapse_range.dart';
+import 'footprint_video_encoder.dart';
 
 class FootprintTimelapseService {
   FootprintTimelapseService._();
@@ -49,8 +50,64 @@ class FootprintTimelapseService {
     final sortedCells = [...h3Cells]
       ..sort((left, right) => left.lastSeen.compareTo(right.lastSeen));
 
+    final introFrameCount = _framesForSeconds(_introDurationSeconds);
+    final heroFrameCount = _framesForSeconds(_heroDurationSeconds);
+    final holdFrameCount = _framesForSeconds(_holdDurationSeconds);
+    final revealFrameCount = _resolveRevealFrameCount(
+      cellCount: sortedCells.length,
+      heroFrameCount: heroFrameCount,
+      holdFrameCount: holdFrameCount,
+    );
+    final directory = await getTemporaryDirectory();
+    final workingDirectory = Directory(
+      '${directory.path}${Platform.pathSeparator}dondepaso_timelapse_frames',
+    );
+    if (workingDirectory.existsSync()) {
+      await workingDirectory.delete(recursive: true);
+    }
+    await workingDirectory.create(recursive: true);
     final scene = await _buildScene(sortedCells);
     try {
+      if (FootprintVideoEncoder.isSupported) {
+        final frameFiles = await _renderFrames(
+          strings: strings,
+          scene: scene,
+          zoneName: zoneName,
+          explorationPercent: explorationPercent,
+          totalPoints: totalPoints,
+          knownKilometers: knownKilometers,
+          introFrameCount: introFrameCount,
+          revealFrameCount: revealFrameCount,
+          heroFrameCount: heroFrameCount,
+          holdFrameCount: holdFrameCount,
+          range: range,
+          workingDirectory: workingDirectory,
+        );
+        final outputPath =
+            '${workingDirectory.path}${Platform.pathSeparator}dondepaso_timelapse.mp4';
+        final encodedPath = await FootprintVideoEncoder.encodePngSequenceToMp4(
+          framePaths: frameFiles.map((file) => file.path).toList(growable: false),
+          outputPath: outputPath,
+          width: _canvasWidth.toInt(),
+          height: _canvasHeight.toInt(),
+          fps: _fps,
+        );
+        if (encodedPath != null) {
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(encodedPath, mimeType: 'video/mp4')],
+              text: strings.timelapseShareBody(
+                zoneName,
+                explorationPercent,
+                strings.timelapseRangeLabel(range),
+              ),
+              title: strings.shareTimelapseOption,
+            ),
+          );
+          return;
+        }
+      }
+
       final image = await _renderHeroFrame(
         strings: strings,
         visibleCells: scene.cells,
@@ -88,8 +145,118 @@ class FootprintTimelapseService {
         ),
       );
     } finally {
+      if (workingDirectory.existsSync()) {
+        await workingDirectory.delete(recursive: true);
+      }
       scene.dispose();
     }
+  }
+
+  static Future<List<File>> _renderFrames({
+    required AppStrings strings,
+    required _TimelapseScene scene,
+    required String zoneName,
+    required int explorationPercent,
+    required int totalPoints,
+    required double knownKilometers,
+    required int introFrameCount,
+    required int revealFrameCount,
+    required int heroFrameCount,
+    required int holdFrameCount,
+    required FootprintTimelapseRange range,
+    required Directory workingDirectory,
+  }) async {
+    final frameFiles = <File>[];
+    for (var introIndex = 0; introIndex < introFrameCount; introIndex++) {
+      final introRatio = introIndex / math.max(1, introFrameCount - 1);
+      final uiImage = await _renderIntroFrame(
+        strings: strings,
+        introRatio: introRatio,
+        zoneName: zoneName,
+        range: range,
+      );
+      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        uiImage.dispose();
+        continue;
+      }
+      final frameFile = File(
+        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
+      );
+      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      frameFiles.add(frameFile);
+      uiImage.dispose();
+    }
+
+    for (var frameIndex = 0; frameIndex < revealFrameCount; frameIndex++) {
+      final revealRatio = _easeOut((frameIndex + 1) / revealFrameCount);
+      final pulse = _musicPulse(frameIndex / math.max(1, revealFrameCount - 1));
+      final visibleCount = math.max(1, (scene.cells.length * revealRatio).round());
+      final uiImage = await _renderFrame(
+        strings: strings,
+        visibleCells: scene.cells.take(visibleCount).toList(growable: false),
+        scene: scene,
+        revealRatio: revealRatio,
+        pulse: pulse,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: range,
+      );
+      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        uiImage.dispose();
+        continue;
+      }
+      final frameFile = File(
+        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
+      );
+      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      frameFiles.add(frameFile);
+      uiImage.dispose();
+    }
+
+    for (var heroIndex = 0; heroIndex < heroFrameCount; heroIndex++) {
+      final heroRatio = heroIndex / math.max(1, heroFrameCount - 1);
+      final pulse = _musicPulse(0.82 + heroRatio * 0.18);
+      final uiImage = await _renderHeroFrame(
+        strings: strings,
+        visibleCells: scene.cells,
+        scene: scene,
+        heroRatio: heroRatio,
+        pulse: pulse,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: range,
+      );
+      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        uiImage.dispose();
+        continue;
+      }
+      final frameFile = File(
+        '${workingDirectory.path}${Platform.pathSeparator}frame_${frameFiles.length.toString().padLeft(3, '0')}.png',
+      );
+      await frameFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      frameFiles.add(frameFile);
+      uiImage.dispose();
+    }
+
+    if (frameFiles.isNotEmpty) {
+      final lastBytes = await frameFiles.last.readAsBytes();
+      for (var holdIndex = 0; holdIndex < holdFrameCount; holdIndex++) {
+        final holdFile = File(
+          '${workingDirectory.path}${Platform.pathSeparator}frame_${(frameFiles.length + holdIndex).toString().padLeft(3, '0')}.png',
+        );
+        await holdFile.writeAsBytes(lastBytes, flush: true);
+        frameFiles.add(holdFile);
+      }
+    }
+
+    return frameFiles;
   }
 
   static Future<void> generateAndShareCard({

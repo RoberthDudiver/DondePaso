@@ -20,7 +20,6 @@ class _AppSecurityGateState extends State<AppSecurityGate>
 
   bool _isChecking = true;
   bool _isUnlocked = false;
-  bool _securityUnavailable = false;
   bool _authInProgress = false;
   bool _unlockScheduled = false;
   Timer? _unlockTimer;
@@ -79,23 +78,18 @@ class _AppSecurityGateState extends State<AppSecurityGate>
     });
 
     try {
-      final canAuthenticate =
-          await _auth.isDeviceSupported() || await _auth.canCheckBiometrics;
+      final deviceSupported = await _auth.isDeviceSupported();
+      final canCheckBiometrics = await _auth.canCheckBiometrics;
+      final availableBiometrics = await _auth.getAvailableBiometrics();
+      final hasEnrolledBiometrics = availableBiometrics.isNotEmpty;
+      final canAuthenticate = deviceSupported || canCheckBiometrics;
 
-      if (!canAuthenticate) {
+      if (!canAuthenticate || (!hasEnrolledBiometrics && !deviceSupported)) {
         if (!mounted) {
           return;
         }
-        if (_isTestBinding()) {
-          setState(() {
-            _isUnlocked = true;
-            _securityUnavailable = false;
-            _isChecking = false;
-          });
-          return;
-        }
         setState(() {
-          _securityUnavailable = true;
+          _isUnlocked = true;
           _isChecking = false;
         });
         return;
@@ -110,9 +104,16 @@ class _AppSecurityGateState extends State<AppSecurityGate>
         return;
       }
 
+      if (!didAuthenticate && !hasEnrolledBiometrics) {
+        setState(() {
+          _isUnlocked = true;
+          _isChecking = false;
+        });
+        return;
+      }
+
       setState(() {
         _isUnlocked = didAuthenticate;
-        _securityUnavailable = false;
         _isChecking = false;
       });
     } catch (error) {
@@ -124,7 +125,6 @@ class _AppSecurityGateState extends State<AppSecurityGate>
       if (message.contains('onSaveInstanceState')) {
         setState(() {
           _isUnlocked = false;
-          _securityUnavailable = false;
           _isChecking = false;
         });
         _scheduleUnlock();
@@ -134,15 +134,32 @@ class _AppSecurityGateState extends State<AppSecurityGate>
       if (_isTestBinding()) {
         setState(() {
           _isUnlocked = true;
-          _securityUnavailable = false;
+          _isChecking = false;
+        });
+        return;
+      }
+
+      final lowered = message.toLowerCase();
+      final looksLikeMissingSecurity =
+          lowered.contains('notenrolled') ||
+          lowered.contains('not enrolled') ||
+          lowered.contains('passcodenotset') ||
+          lowered.contains('passcode not set') ||
+          lowered.contains('no biometrics enrolled') ||
+          lowered.contains('no device credential') ||
+          lowered.contains('security_update_required') ||
+          lowered.contains('biometric_error_none_enrolled');
+
+      if (looksLikeMissingSecurity) {
+        setState(() {
+          _isUnlocked = true;
           _isChecking = false;
         });
         return;
       }
 
       setState(() {
-        _isUnlocked = false;
-        _securityUnavailable = true;
+        _isUnlocked = true;
         _isChecking = false;
       });
     } finally {
@@ -166,18 +183,14 @@ class _AppSecurityGateState extends State<AppSecurityGate>
             children: [
               const Spacer(),
               Text(
-                _securityUnavailable
-                    ? strings.securityRequiredTitle
-                    : strings.unlockTitle,
+                strings.unlockTitle,
                 style: Theme.of(
                   context,
                 ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
               Text(
-                _securityUnavailable
-                    ? strings.securityRequiredBody
-                    : strings.unlockBody,
+                strings.unlockBody,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   height: 1.35,
                   color: Colors.white.withValues(alpha: 0.78),

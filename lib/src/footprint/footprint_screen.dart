@@ -726,6 +726,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
       },
     );
 
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    await WidgetsBinding.instance.endOfFrame;
+
     try {
       await FootprintTimelapseService.generateAndShareCard(
         strings: strings,
@@ -735,8 +738,8 @@ class _FootprintScreenState extends State<FootprintScreen> {
         totalPoints: _totalPoints,
         knownKilometers: _knownKilometers,
       );
-    } catch (_) {
-      _showMessage(strings.shareMapError);
+    } catch (error) {
+      _showMessage('${strings.shareMapError} (${_shortShareError(error)})');
     } finally {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
@@ -773,6 +776,9 @@ class _FootprintScreenState extends State<FootprintScreen> {
       },
     );
 
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    await WidgetsBinding.instance.endOfFrame;
+
     try {
       await FootprintTimelapseService.generateAndShare(
         strings: strings,
@@ -783,9 +789,11 @@ class _FootprintScreenState extends State<FootprintScreen> {
         knownKilometers: _knownKilometers,
         range: range,
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        _showMessage(strings.shareTimelapseError);
+        _showMessage(
+          '${strings.shareTimelapseError} (${_shortShareError(error)})',
+        );
       }
     } finally {
       if (mounted) {
@@ -1615,6 +1623,19 @@ class _FootprintScreenState extends State<FootprintScreen> {
       return strings.lastCaptureMinutes(delta.inMinutes);
     }
     return strings.lastCaptureHours(delta.inHours);
+  }
+
+  String _shortShareError(Object error) {
+    final raw = error.toString().replaceAll('\n', ' ').trim();
+    if (raw.isEmpty) {
+      return 'unknown';
+    }
+
+    if (raw.length <= 70) {
+      return raw;
+    }
+
+    return '${raw.substring(0, 67)}...';
   }
 }
 
