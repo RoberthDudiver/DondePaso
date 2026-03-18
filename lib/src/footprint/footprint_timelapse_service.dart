@@ -12,12 +12,14 @@ import 'package:share_plus/share_plus.dart';
 import '../i18n/app_strings.dart';
 import 'footprint_cell.dart';
 import 'footprint_h3_grid.dart';
+import 'footprint_media_store.dart';
 import 'footprint_timelapse_range.dart';
 import 'footprint_video_encoder.dart';
 
 class FootprintTimelapseService {
   FootprintTimelapseService._();
 
+  static const String _soundtrackAsset = 'DOndePAso1.mp3';
   static const double _canvasWidth = 720.0;
   static const double _canvasHeight = 1280.0;
   static const double _mapTop = 248.0;
@@ -85,24 +87,25 @@ class FootprintTimelapseService {
         );
         final outputPath =
             '${workingDirectory.path}${Platform.pathSeparator}dondepaso_timelapse.mp4';
+        final soundtrackPath = await _prepareSoundtrackFile();
+        final totalFrameCount =
+            introFrameCount + revealFrameCount + heroFrameCount + holdFrameCount;
         final encodedPath = await FootprintVideoEncoder.encodePngSequenceToMp4(
           framePaths: frameFiles.map((file) => file.path).toList(growable: false),
           outputPath: outputPath,
           width: _canvasWidth.toInt(),
           height: _canvasHeight.toInt(),
           fps: _fps,
+          audioPath: soundtrackPath,
+          audioDurationUs: ((totalFrameCount * 1000000) / _fps).round(),
         );
         if (encodedPath != null) {
-          await SharePlus.instance.share(
-            ShareParams(
-              files: [XFile(encodedPath, mimeType: 'video/mp4')],
-              text: strings.timelapseShareBody(
-                zoneName,
-                explorationPercent,
-                strings.timelapseRangeLabel(range),
-              ),
-              title: strings.shareTimelapseOption,
-            ),
+          await _shareVideo(
+            strings: strings,
+            encodedPath: encodedPath,
+            zoneName: zoneName,
+            explorationPercent: explorationPercent,
+            range: range,
           );
           return;
         }
@@ -133,16 +136,12 @@ class FootprintTimelapseService {
       );
       await file.writeAsBytes(bytes, flush: true);
 
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'image/png')],
-          text: strings.timelapseShareBody(
-            zoneName,
-            explorationPercent,
-            strings.timelapseRangeLabel(range),
-          ),
-          title: strings.shareTimelapseOption,
-        ),
+      await _shareImage(
+        strings: strings,
+        imagePath: file.path,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        range: range,
       );
     } finally {
       if (workingDirectory.existsSync()) {
@@ -301,14 +300,171 @@ class FootprintTimelapseService {
       );
       await file.writeAsBytes(bytes, flush: true);
 
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'image/png')],
-          text: strings.shareMapBody(zoneName, explorationPercent),
-          title: strings.shareMapTitle,
-        ),
+      await _shareImage(
+        strings: strings,
+        imagePath: file.path,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        range: FootprintTimelapseRange.global,
+        isMapCard: true,
       );
     } finally {
+      scene.dispose();
+    }
+  }
+
+  static Future<void> generateAndSaveCard({
+    required AppStrings strings,
+    required List<FootprintCell> cells,
+    required String zoneName,
+    required int explorationPercent,
+    required int totalPoints,
+    required double knownKilometers,
+  }) async {
+    final h3Cells = cells.where((cell) => cell.isH3).toList(growable: false);
+    if (h3Cells.isEmpty) {
+      throw StateError('No H3 cells available for share card.');
+    }
+
+    final sortedCells = [...h3Cells]
+      ..sort((left, right) => left.lastSeen.compareTo(right.lastSeen));
+    final scene = await _buildScene(sortedCells);
+    try {
+      final image = await _renderHeroFrame(
+        strings: strings,
+        visibleCells: scene.cells,
+        scene: scene,
+        heroRatio: 0.58,
+        pulse: 0.76,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: FootprintTimelapseRange.global,
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('Share card image bytes are empty.');
+      }
+
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}dondepaso_share_card.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      await _saveImageToGallery(
+        imagePath: file.path,
+        displayName: _buildDisplayName('dondepaso_card', '.png'),
+      );
+    } finally {
+      scene.dispose();
+    }
+  }
+
+  static Future<void> generateAndSaveTimelapse({
+    required AppStrings strings,
+    required List<FootprintCell> cells,
+    required String zoneName,
+    required int explorationPercent,
+    required int totalPoints,
+    required double knownKilometers,
+    required FootprintTimelapseRange range,
+  }) async {
+    final filteredCells = _filterCellsForRange(cells, range);
+    final h3Cells = filteredCells.where((cell) => cell.isH3).toList(growable: false);
+    if (h3Cells.isEmpty) {
+      throw StateError('No H3 cells available for timelapse.');
+    }
+
+    final sortedCells = [...h3Cells]
+      ..sort((left, right) => left.lastSeen.compareTo(right.lastSeen));
+
+    final introFrameCount = _framesForSeconds(_introDurationSeconds);
+    final heroFrameCount = _framesForSeconds(_heroDurationSeconds);
+    final holdFrameCount = _framesForSeconds(_holdDurationSeconds);
+    final revealFrameCount = _resolveRevealFrameCount(
+      cellCount: sortedCells.length,
+      heroFrameCount: heroFrameCount,
+      holdFrameCount: holdFrameCount,
+    );
+    final directory = await getTemporaryDirectory();
+    final workingDirectory = Directory(
+      '${directory.path}${Platform.pathSeparator}dondepaso_timelapse_frames',
+    );
+    if (workingDirectory.existsSync()) {
+      await workingDirectory.delete(recursive: true);
+    }
+    await workingDirectory.create(recursive: true);
+    final scene = await _buildScene(sortedCells);
+    try {
+      if (FootprintVideoEncoder.isSupported) {
+        final frameFiles = await _renderFrames(
+          strings: strings,
+          scene: scene,
+          zoneName: zoneName,
+          explorationPercent: explorationPercent,
+          totalPoints: totalPoints,
+          knownKilometers: knownKilometers,
+          introFrameCount: introFrameCount,
+          revealFrameCount: revealFrameCount,
+          heroFrameCount: heroFrameCount,
+          holdFrameCount: holdFrameCount,
+          range: range,
+          workingDirectory: workingDirectory,
+        );
+        final outputPath =
+            '${workingDirectory.path}${Platform.pathSeparator}dondepaso_timelapse.mp4';
+        final soundtrackPath = await _prepareSoundtrackFile();
+        final totalFrameCount =
+            introFrameCount + revealFrameCount + heroFrameCount + holdFrameCount;
+        final encodedPath = await FootprintVideoEncoder.encodePngSequenceToMp4(
+          framePaths: frameFiles.map((file) => file.path).toList(growable: false),
+          outputPath: outputPath,
+          width: _canvasWidth.toInt(),
+          height: _canvasHeight.toInt(),
+          fps: _fps,
+          audioPath: soundtrackPath,
+          audioDurationUs: ((totalFrameCount * 1000000) / _fps).round(),
+        );
+        if (encodedPath != null) {
+          await _saveVideoToGallery(encodedPath);
+          return;
+        }
+      }
+
+      final image = await _renderHeroFrame(
+        strings: strings,
+        visibleCells: scene.cells,
+        scene: scene,
+        heroRatio: 1.0,
+        pulse: 0.92,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: totalPoints,
+        knownKilometers: knownKilometers,
+        range: range,
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('Timelapse fallback image bytes are empty.');
+      }
+
+      final file = File(
+        '${workingDirectory.path}${Platform.pathSeparator}dondepaso_timelapse_fallback.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      await _saveImageToGallery(
+        imagePath: file.path,
+        displayName: _buildDisplayName('dondepaso_timelapse', '.png'),
+      );
+    } finally {
+      if (workingDirectory.existsSync()) {
+        await workingDirectory.delete(recursive: true);
+      }
       scene.dispose();
     }
   }
@@ -1467,6 +1623,142 @@ class FootprintTimelapseService {
     );
     _paintText(canvas, title, Offset(origin.dx + 16, origin.dy + 16), 18, FontWeight.w600, accent);
     _paintText(canvas, value, Offset(origin.dx + 16, origin.dy + 48), 28, FontWeight.w800, Colors.white);
+  }
+
+  static Future<void> _shareVideo({
+    required AppStrings strings,
+    required String encodedPath,
+    required String zoneName,
+    required int explorationPercent,
+    required FootprintTimelapseRange range,
+  }) async {
+    final body = strings.timelapseShareBody(
+      zoneName,
+      explorationPercent,
+      strings.timelapseRangeLabel(range),
+    );
+
+    if (FootprintMediaStore.isSupported) {
+      final uri = await FootprintMediaStore.saveToGallery(
+        sourcePath: encodedPath,
+        mimeType: 'video/mp4',
+        displayName: _buildDisplayName('dondepaso_timelapse', '.mp4'),
+      );
+      if (uri != null) {
+        await FootprintMediaStore.shareSavedMedia(
+          uri: uri,
+          mimeType: 'video/mp4',
+          text: body,
+          title: strings.shareTimelapseOption,
+        );
+        return;
+      }
+    }
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(encodedPath, mimeType: 'video/mp4')],
+        text: body,
+        title: strings.shareTimelapseOption,
+      ),
+    );
+  }
+
+  static Future<void> _shareImage({
+    required AppStrings strings,
+    required String imagePath,
+    required String zoneName,
+    required int explorationPercent,
+    required FootprintTimelapseRange range,
+    bool isMapCard = false,
+  }) async {
+    final body = isMapCard
+        ? strings.shareMapBody(zoneName, explorationPercent)
+        : strings.timelapseShareBody(
+            zoneName,
+            explorationPercent,
+            strings.timelapseRangeLabel(range),
+          );
+    final title =
+        isMapCard ? strings.shareMapTitle : strings.shareTimelapseOption;
+
+    if (FootprintMediaStore.isSupported) {
+      final uri = await FootprintMediaStore.saveToGallery(
+        sourcePath: imagePath,
+        mimeType: 'image/png',
+        displayName: _buildDisplayName(
+          isMapCard ? 'dondepaso_card' : 'dondepaso_timelapse',
+          '.png',
+        ),
+      );
+      if (uri != null) {
+        await FootprintMediaStore.shareSavedMedia(
+          uri: uri,
+          mimeType: 'image/png',
+          text: body,
+          title: title,
+        );
+        return;
+      }
+    }
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(imagePath, mimeType: 'image/png')],
+        text: body,
+        title: title,
+      ),
+    );
+  }
+
+  static Future<void> _saveImageToGallery({
+    required String imagePath,
+    required String displayName,
+  }) async {
+    if (FootprintMediaStore.isSupported) {
+      final savedUri = await FootprintMediaStore.saveToGallery(
+        sourcePath: imagePath,
+        mimeType: 'image/png',
+        displayName: displayName,
+      );
+      if (savedUri != null) {
+        return;
+      }
+    }
+  }
+
+  static Future<void> _saveVideoToGallery(String encodedPath) async {
+    if (FootprintMediaStore.isSupported) {
+      final savedUri = await FootprintMediaStore.saveToGallery(
+        sourcePath: encodedPath,
+        mimeType: 'video/mp4',
+        displayName: _buildDisplayName('dondepaso_timelapse', '.mp4'),
+      );
+      if (savedUri != null) {
+        return;
+      }
+    }
+  }
+
+  static String _buildDisplayName(String prefix, String extension) {
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    return '${prefix}_$stamp$extension';
+  }
+
+  static Future<String?> _prepareSoundtrackFile() async {
+    try {
+      final byteData = await rootBundle.load(_soundtrackAsset);
+      final tempDir = await getTemporaryDirectory();
+      final file = File(
+        '${tempDir.path}${Platform.pathSeparator}dondepaso_soundtrack.mp3',
+      );
+      await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

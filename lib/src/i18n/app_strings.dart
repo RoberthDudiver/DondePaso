@@ -414,8 +414,12 @@ class AppStrings {
       isSpanish ? 'Compartir tu mapa' : 'Share your map';
   String get shareCardOption =>
       isSpanish ? 'Tarjeta del mapa' : 'Map card';
+  String get saveCardOption =>
+      isSpanish ? 'Guardar tarjeta' : 'Save card';
   String get shareTimelapseOption =>
       isSpanish ? 'Timelapse' : 'Timelapse';
+  String get saveTimelapseOption =>
+      isSpanish ? 'Guardar timelapse' : 'Save timelapse';
   String get shareTimelapseRangeTitle =>
       isSpanish ? 'Periodo del timelapse' : 'Timelapse range';
   String timelapseRangeLabel(FootprintTimelapseRange range) {
@@ -443,8 +447,12 @@ class AppStrings {
       : '$zoneName now pulses with $percent% real exploration in $rangeLabel.';
   String get shareTimelapseLoading =>
       isSpanish ? 'Generando timelapse...' : 'Generating timelapse...';
+  String get saveTimelapseLoading =>
+      isSpanish ? 'Guardando timelapse...' : 'Saving timelapse...';
   String get shareMapTitle =>
       isSpanish ? 'Mi mapa en DondePaso' : 'My DondePaso map';
+  String get saveMapCardLoading =>
+      isSpanish ? 'Guardando tarjeta...' : 'Saving card...';
   String shareMapBody(String zoneName, int percent) => isSpanish
       ? 'Estoy revelando $zoneName y llevo $percent% de exploracion urbana en DondePaso.'
       : 'I am revealing $zoneName and I am already at $percent% urban exploration in DondePaso.';
@@ -454,9 +462,18 @@ class AppStrings {
   String get shareMapError => isSpanish
       ? 'No pude generar la tarjeta para compartir.'
       : 'I could not generate the share card.';
+  String get saveMapCardError => isSpanish
+      ? 'No pude guardar la tarjeta.'
+      : 'I could not save the card.';
   String get shareTimelapseError => isSpanish
       ? 'No pude generar el timelapse.'
       : 'I could not generate the timelapse.';
+  String get saveTimelapseError => isSpanish
+      ? 'No pude guardar el timelapse.'
+      : 'I could not save the timelapse.';
+  String get savedToGallery => isSpanish
+      ? 'Guardado en la galeria.'
+      : 'Saved to gallery.';
   String get activeZones =>
       isSpanish ? 'Zonas activas' : 'Active zones';
   String get unlockedAchievements =>
