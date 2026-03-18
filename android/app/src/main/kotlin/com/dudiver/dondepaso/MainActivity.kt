@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.MethodChannel
@@ -14,6 +15,7 @@ import java.io.FileInputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterFragmentActivity() {
+    private val tag = "DondePasoVideo"
     private val videoEncoderExecutor = Executors.newSingleThreadExecutor()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -46,36 +48,24 @@ class MainActivity : FlutterFragmentActivity() {
 
                     videoEncoderExecutor.execute {
                         try {
-                            val tempVideoPath =
-                                if (!audioPath.isNullOrBlank()) {
-                                    outputPath.removeSuffix(".mp4") + "_video.mp4"
-                                } else {
-                                    outputPath
-                                }
-
-                            val encodedVideoPath = TimelapseVideoEncoder.encodePngSequenceToMp4(
-                                framePaths = framePaths,
-                                outputPath = tempVideoPath,
-                                width = width,
-                                height = height,
-                                fps = fps,
+                            Log.d(
+                                tag,
+                                "Starting timelapse export. frames=${framePaths.size}, output=$outputPath, audio=$audioPath",
                             )
-                            val encodedPath =
-                                if (!audioPath.isNullOrBlank()) {
-                                    TimelapseVideoEncoder.composeWithAudio(
-                                        context = applicationContext,
-                                        videoPath = encodedVideoPath,
-                                        audioPath = audioPath,
-                                        outputPath = outputPath,
-                                        audioDurationUs = audioDurationUs,
-                                    )
-                                } else {
-                                    encodedVideoPath
-                                }
+                            val encodedPath = TimelapseVideoEncoder.encodePngSequenceToMp4(
+                                context = applicationContext,
+                                framePaths = framePaths,
+                                outputPath = outputPath,
+                                fps = fps,
+                                audioPath = audioPath,
+                                audioDurationUs = audioDurationUs,
+                            )
+                            Log.d(tag, "Timelapse export finished. encodedPath=$encodedPath")
                             runOnUiThread {
                                 result.success(encodedPath)
                             }
                         } catch (error: Exception) {
+                            Log.e(tag, "Timelapse export failed", error)
                             runOnUiThread {
                                 result.error("encode_failed", error.message, null)
                             }
@@ -108,8 +98,10 @@ class MainActivity : FlutterFragmentActivity() {
 
                     try {
                         val uri = saveToGallery(sourcePath, mimeType, displayName)
+                        Log.d(tag, "Saved media to gallery. uri=$uri mimeType=$mimeType")
                         result.success(uri.toString())
                     } catch (error: Exception) {
+                        Log.e(tag, "Saving media failed", error)
                         result.error("save_failed", error.message, null)
                     }
                 }
@@ -126,9 +118,11 @@ class MainActivity : FlutterFragmentActivity() {
                     }
 
                     try {
+                        Log.d(tag, "Sharing media. uri=$uriString mimeType=$mimeType")
                         shareSavedMedia(Uri.parse(uriString), mimeType, text, title)
                         result.success(null)
                     } catch (error: Exception) {
+                        Log.e(tag, "Sharing media failed", error)
                         result.error("share_failed", error.message, null)
                     }
                 }

@@ -1,14 +1,10 @@
 package com.dudiver.dondepaso
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
-import android.media.MediaFormat
-import android.media.MediaMuxer
 import android.net.Uri
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -19,22 +15,25 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import java.io.File
-import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 object TimelapseVideoEncoder {
-    private const val MIME_TYPE = "video/avc"
-    private const val TIMEOUT_US = 10000L
-
+    private const val TAG = "DondePasoVideo"
+    @OptIn(UnstableApi::class)
     fun encodePngSequenceToMp4(
+        context: Context,
         framePaths: List<String>,
         outputPath: String,
-        width: Int,
-        height: Int,
         fps: Int,
+        audioPath: String? = null,
+        audioDurationUs: Long? = null,
     ): String {
         require(framePaths.isNotEmpty()) { "Frame sequence is empty." }
+        Log.d(
+            TAG,
+            "Composing timelapse with Media3. frames=${framePaths.size}, fps=$fps, audio=${!audioPath.isNullOrBlank()}",
+        )
 
         val outputFile = File(outputPath)
         outputFile.parentFile?.mkdirs()
@@ -42,302 +41,99 @@ object TimelapseVideoEncoder {
             outputFile.delete()
         }
 
-        val format = MediaFormat.createVideoFormat(MIME_TYPE, width, height).apply {
-            setInteger(
-                MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
-            )
-            setInteger(MediaFormat.KEY_BIT_RATE, (width * height * 8).coerceAtLeast(6_000_000))
-            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
-            setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel31)
-            setInteger(
-                MediaFormat.KEY_BITRATE_MODE,
-                MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
-            )
-        }
-
-        val codec = MediaCodec.createEncoderByType(MIME_TYPE)
-        val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        var trackIndex = -1
-        var muxerStarted = false
-        val bufferInfo = MediaCodec.BufferInfo()
-
-        try {
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
-
-            val yuvBuffer = ByteArray(width * height * 3 / 2)
-            framePaths.forEachIndexed { index, framePath ->
-                val bitmap = loadScaledBitmap(framePath, width, height)
-                argbToI420(bitmap, yuvBuffer, width, height)
-                bitmap.recycle()
-
-                var inputIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-                while (inputIndex < 0) {
-                    drainEncoder(
-                        codec = codec,
-                        muxer = muxer,
-                        bufferInfo = bufferInfo,
-                        onMuxerStarted = { newTrackIndex ->
-                            trackIndex = newTrackIndex
-                            muxerStarted = true
-                        },
-                        onSampleData = { outputBuffer, info ->
-                            if (muxerStarted && trackIndex >= 0) {
-                                muxer.writeSampleData(trackIndex, outputBuffer, info)
-                            }
-                        },
-                    )
-                    inputIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-                }
-
-                codec.getInputBuffer(inputIndex)?.apply {
-                    clear()
-                    put(yuvBuffer)
-                }
-                val presentationTimeUs = index * 1_000_000L / fps
-                codec.queueInputBuffer(inputIndex, 0, yuvBuffer.size, presentationTimeUs, 0)
-                drainEncoder(
-                    codec = codec,
-                    muxer = muxer,
-                    bufferInfo = bufferInfo,
-                    onMuxerStarted = { newTrackIndex ->
-                        trackIndex = newTrackIndex
-                        muxerStarted = true
-                    },
-                    onSampleData = { outputBuffer, info ->
-                        if (muxerStarted && trackIndex >= 0) {
-                            muxer.writeSampleData(trackIndex, outputBuffer, info)
-                        }
-                    },
-                )
+        val frameDurationMs = (1000.0 / fps).toLong().coerceAtLeast(1L)
+        val videoItems =
+            framePaths.map { framePath ->
+                val item =
+                    MediaItem.Builder()
+                        .setUri(Uri.fromFile(File(framePath)))
+                        .setImageDurationMs(frameDurationMs)
+                        .build()
+                EditedMediaItem.Builder(item).setFrameRate(fps).build()
             }
 
-            val eosInputIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-            if (eosInputIndex >= 0) {
-                codec.queueInputBuffer(
-                    eosInputIndex,
-                    0,
-                    0,
-                    framePaths.size * 1_000_000L / fps,
-                    MediaCodec.BUFFER_FLAG_END_OF_STREAM,
-                )
+        val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
+        val composition =
+            if (!audioPath.isNullOrBlank()) {
+                val durationMs = ((audioDurationUs ?: 0L) / 1000L).coerceAtLeast(1L)
+                val audioItem =
+                    MediaItem.Builder()
+                        .setUri(Uri.fromFile(File(audioPath)))
+                        .setClippingConfiguration(
+                            MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(0)
+                                .setEndPositionMs(durationMs)
+                                .build(),
+                        ).build()
+                val audioSequence =
+                    EditedMediaItemSequence.Builder(
+                        listOf(EditedMediaItem.Builder(audioItem).build()),
+                    ).build()
+                Composition.Builder(videoSequence, audioSequence).build()
+            } else {
+                Composition.Builder(videoSequence).build()
             }
-
-            var outputDone = false
-            while (!outputDone) {
-                val outputIndex = codec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-                when {
-                    outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                        // Keep polling.
-                    }
-
-                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        if (!muxerStarted) {
-                            trackIndex = muxer.addTrack(codec.outputFormat)
-                            muxer.start()
-                            muxerStarted = true
-                        }
-                    }
-
-                    outputIndex >= 0 -> {
-                        val outputBuffer = codec.getOutputBuffer(outputIndex)
-                        if (
-                            outputBuffer != null &&
-                                bufferInfo.size > 0 &&
-                                muxerStarted &&
-                                trackIndex >= 0
-                        ) {
-                            outputBuffer.position(bufferInfo.offset)
-                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            muxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
-                        }
-                        outputDone =
-                            (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                        codec.releaseOutputBuffer(outputIndex, false)
-                    }
-                }
-            }
-        } finally {
-            try {
-                codec.stop()
-            } catch (_: Exception) {
-            }
-            codec.release()
-            try {
-                if (muxerStarted) {
-                    muxer.stop()
-                }
-            } catch (_: Exception) {
-            }
-            muxer.release()
-        }
-
-        return outputFile.path
-    }
-
-    @OptIn(UnstableApi::class)
-    fun composeWithAudio(
-        context: Context,
-        videoPath: String,
-        audioPath: String,
-        outputPath: String,
-        audioDurationUs: Long?,
-    ): String {
-        val outputFile = File(outputPath)
-        outputFile.parentFile?.mkdirs()
-        if (outputFile.exists()) {
-            outputFile.delete()
-        }
-
-        val durationMs = ((audioDurationUs ?: 0L) / 1000L).coerceAtLeast(1L)
-        val videoItem = MediaItem.fromUri(Uri.fromFile(File(videoPath)))
-        val audioItem =
-            MediaItem.Builder()
-                .setUri(Uri.fromFile(File(audioPath)))
-                .setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(0)
-                        .setEndPositionMs(durationMs)
-                        .build(),
-                ).build()
-
-        val videoSequence =
-            EditedMediaItemSequence.Builder(
-                listOf(EditedMediaItem.Builder(videoItem).build()),
-            ).build()
-        val audioSequence =
-            EditedMediaItemSequence.Builder(
-                listOf(EditedMediaItem.Builder(audioItem).build()),
-            ).build()
-        val composition = Composition.Builder(videoSequence, audioSequence).build()
 
         val latch = CountDownLatch(1)
         var exportError: ExportException? = null
+        var unexpectedError: Exception? = null
+        val handlerThread = HandlerThread("DondePasoTransformer").apply { start() }
 
-        val transformer =
-            Transformer.Builder(context)
-                .setVideoMimeType(MimeTypes.VIDEO_H264)
-                .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                .addListener(
-                    object : Transformer.Listener {
-                        override fun onCompleted(
-                            composition: Composition,
-                            exportResult: ExportResult,
-                        ) {
-                            latch.countDown()
-                        }
+        try {
+            Handler(handlerThread.looper).post {
+                try {
+                    val transformer =
+                        Transformer.Builder(context)
+                            .setLooper(handlerThread.looper)
+                            .setVideoMimeType(MimeTypes.VIDEO_H264)
+                            .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                            .addListener(
+                                object : Transformer.Listener {
+                                    override fun onCompleted(
+                                        composition: Composition,
+                                        exportResult: ExportResult,
+                                    ) {
+                                        latch.countDown()
+                                    }
 
-                        override fun onError(
-                            composition: Composition,
-                            exportResult: ExportResult,
-                            exportException: ExportException,
-                        ) {
-                            exportError = exportException
-                            latch.countDown()
-                        }
-                    },
-                ).build()
+                                    override fun onError(
+                                        composition: Composition,
+                                        exportResult: ExportResult,
+                                        exportException: ExportException,
+                                    ) {
+                                        exportError = exportException
+                                        latch.countDown()
+                                    }
+                                },
+                            ).build()
 
-        transformer.start(composition, outputPath)
-        if (!latch.await(120, TimeUnit.SECONDS)) {
-            throw IllegalStateException("Timed out while composing timelapse audio.")
-        }
-        if (exportError != null) {
-            throw exportError as ExportException
+                    transformer.start(composition, outputPath)
+                } catch (error: ExportException) {
+                    exportError = error
+                    latch.countDown()
+                } catch (error: Exception) {
+                    unexpectedError = error
+                    latch.countDown()
+                }
+            }
+
+            if (!latch.await(180, TimeUnit.SECONDS)) {
+                Log.e(TAG, "Timed out while exporting timelapse")
+                throw IllegalStateException("Timed out while exporting timelapse.")
+            }
+            if (exportError != null) {
+                Log.e(TAG, "Transformer export failed", exportError)
+                throw exportError as ExportException
+            }
+            if (unexpectedError != null) {
+                Log.e(TAG, "Transformer export failed unexpectedly", unexpectedError)
+                throw unexpectedError as Exception
+            }
+            Log.d(TAG, "Transformer export completed. output=$outputPath")
+        } finally {
+            handlerThread.quitSafely()
         }
 
         return outputFile.path
-    }
-
-    private fun drainEncoder(
-        codec: MediaCodec,
-        muxer: MediaMuxer,
-        bufferInfo: MediaCodec.BufferInfo,
-        onMuxerStarted: (Int) -> Unit,
-        onSampleData: (ByteBuffer, MediaCodec.BufferInfo) -> Unit,
-    ) {
-        while (true) {
-            val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
-            when {
-                outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> return
-                outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    onMuxerStarted(muxer.addTrack(codec.outputFormat))
-                    muxer.start()
-                }
-
-                outputIndex >= 0 -> {
-                    val outputBuffer = codec.getOutputBuffer(outputIndex)
-                    if (
-                        outputBuffer != null &&
-                            bufferInfo.size > 0 &&
-                            (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0
-                    ) {
-                        outputBuffer.position(bufferInfo.offset)
-                        outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                        val sampleInfo =
-                            MediaCodec.BufferInfo().apply {
-                                set(
-                                    0,
-                                    bufferInfo.size,
-                                    bufferInfo.presentationTimeUs,
-                                    bufferInfo.flags,
-                                )
-                            }
-                        onSampleData(outputBuffer, sampleInfo)
-                    }
-                    codec.releaseOutputBuffer(outputIndex, false)
-                }
-            }
-        }
-    }
-
-    private fun loadScaledBitmap(path: String, width: Int, height: Int): Bitmap {
-        val original =
-            BitmapFactory.decodeFile(path)
-                ?: throw IllegalStateException("Unable to decode frame: $path")
-        if (original.width == width && original.height == height) {
-            return original.copy(Bitmap.Config.ARGB_8888, false).also {
-                original.recycle()
-            }
-        }
-
-        val target = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(target)
-        canvas.drawBitmap(original, null, android.graphics.Rect(0, 0, width, height), null)
-        original.recycle()
-        return target
-    }
-
-    private fun argbToI420(bitmap: Bitmap, out: ByteArray, width: Int, height: Int) {
-        val frameSize = width * height
-        val uStart = frameSize
-        val vStart = frameSize + (frameSize / 4)
-        var yIndex = 0
-        var uIndex = uStart
-        var vIndex = vStart
-        val pixels = IntArray(frameSize)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        for (j in 0 until height) {
-            for (i in 0 until width) {
-                val color = pixels[j * width + i]
-                val r = color shr 16 and 0xFF
-                val g = color shr 8 and 0xFF
-                val b = color and 0xFF
-
-                val y = ((66 * r + 129 * g + 25 * b + 128) shr 8) + 16
-                val u = ((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128
-                val v = ((112 * r - 94 * g - 18 * b + 128) shr 8) + 128
-
-                out[yIndex++] = y.coerceIn(0, 255).toByte()
-                if (j % 2 == 0 && i % 2 == 0) {
-                    out[uIndex++] = u.coerceIn(0, 255).toByte()
-                    out[vIndex++] = v.coerceIn(0, 255).toByte()
-                }
-            }
-        }
     }
 }
