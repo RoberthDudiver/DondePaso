@@ -18,6 +18,8 @@ class FootprintVideoEncoder {
     required int width,
     required int height,
     required int fps,
+    String? audioPath,
+    int? audioDurationUs,
   }) async {
     if (!isSupported || framePaths.isEmpty) {
       return null;
@@ -31,6 +33,8 @@ class FootprintVideoEncoder {
         'width': width,
         'height': height,
         'fps': fps,
+        'audioPath': audioPath,
+        'audioDurationUs': audioDurationUs,
       },
     );
     return result;

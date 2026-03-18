@@ -747,6 +747,57 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
   }
 
+  Future<void> _saveMapCard() async {
+    final strings = context.strings;
+    final primaryZoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
+    final explorationPercent = (_cityExplorationRatio * 100).round();
+
+    if (!mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(strings.saveMapCardLoading)),
+            ],
+          ),
+        );
+      },
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      await FootprintTimelapseService.generateAndSaveCard(
+        strings: strings,
+        cells: _cells,
+        zoneName: primaryZoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: _totalPoints,
+        knownKilometers: _knownKilometers,
+      );
+      _showMessage(strings.savedToGallery);
+    } catch (error) {
+      _showMessage('${strings.saveMapCardError} (${_shortShareError(error)})');
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   Future<void> _shareTimelapse(FootprintTimelapseRange range) async {
     final strings = context.strings;
     final zoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
@@ -802,6 +853,60 @@ class _FootprintScreenState extends State<FootprintScreen> {
     }
   }
 
+  Future<void> _saveTimelapse(FootprintTimelapseRange range) async {
+    final strings = context.strings;
+    final zoneName = _displayZoneTitle(_zonesSnapshot.primaryZone, strings);
+    final explorationPercent = (_cityExplorationRatio * 100).round();
+
+    if (!mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(strings.saveTimelapseLoading)),
+            ],
+          ),
+        );
+      },
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      await FootprintTimelapseService.generateAndSaveTimelapse(
+        strings: strings,
+        cells: _cells,
+        zoneName: zoneName,
+        explorationPercent: explorationPercent,
+        totalPoints: _totalPoints,
+        knownKilometers: _knownKilometers,
+        range: range,
+      );
+      _showMessage(strings.savedToGallery);
+    } catch (error) {
+      _showMessage(
+        '${strings.saveTimelapseError} (${_shortShareError(error)})',
+      );
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   Future<void> _openTimelapseRangeOptions() async {
     final strings = context.strings;
     await showModalBottomSheet<void>(
@@ -826,13 +931,27 @@ class _FootprintScreenState extends State<FootprintScreen> {
                 ),
                 const SizedBox(height: 12),
                 for (final range in FootprintTimelapseRange.values)
-                  ListTile(
+                  ExpansionTile(
                     leading: const Icon(Icons.timelapse_rounded),
                     title: Text(strings.timelapseRangeLabel(range)),
-                    onTap: () async {
-                      Navigator.of(context).pop();
-                      await _shareTimelapse(range);
-                    },
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.share_outlined),
+                        title: Text(strings.shareTimelapseOption),
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await _shareTimelapse(range);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.download_rounded),
+                        title: Text(strings.saveTimelapseOption),
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await _saveTimelapse(range);
+                        },
+                      ),
+                    ],
                   ),
               ],
             ),
@@ -871,6 +990,14 @@ class _FootprintScreenState extends State<FootprintScreen> {
                   onTap: () async {
                     Navigator.of(context).pop();
                     await _shareMapCard();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.download_rounded),
+                  title: Text(strings.saveCardOption),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _saveMapCard();
                   },
                 ),
                 ListTile(
