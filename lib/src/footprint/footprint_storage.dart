@@ -158,6 +158,8 @@ class FootprintStorage {
       }
     }
 
+    await _printDiagnostics(db);
+    await _purgeExpiredCells(db);
     return _readStateFromDatabase(db);
   }
 
@@ -355,7 +357,7 @@ class FootprintStorage {
     _cachedDatabase = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onCreate: (db, _) async {
           await _createSchema(db);
         },
@@ -407,6 +409,20 @@ class FootprintStorage {
             );
             await db.execute(
               'ALTER TABLE $_blocksTable ADD COLUMN vehicle_visits INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+          if (oldVersion < 5) {
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_cells_last_seen ON $_cellsTable (last_seen)',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_cells_h3 ON $_cellsTable (h3_index)',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_segments_mid ON $_blockSegmentsTable (mid_lat, mid_lon)',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_blocks_center ON $_blocksTable (center_lat, center_lon)',
             );
           }
         },
@@ -523,35 +539,21 @@ class FootprintStorage {
     }
 
     final db = await _database();
+    final walkingInc =
+        transportMode == FootprintTransportMode.walking ? 1 : 0;
+    final vehicleInc =
+        transportMode == FootprintTransportMode.vehicle ? 1 : 0;
+    final lastSeen = at.toIso8601String();
     await db.transaction((txn) async {
       for (final id in uniqueIds) {
-        final rows = await txn.query(
-          _blockSegmentsTable,
-          columns: const ['visits', 'walking_visits', 'vehicle_visits'],
-          where: 'id = ?',
-          whereArgs: [id],
-          limit: 1,
-        );
-        if (rows.isEmpty) {
-          continue;
-        }
-        final currentVisits = ((rows.first['visits'] as num?) ?? 0).toInt();
-        final currentWalking = ((rows.first['walking_visits'] as num?) ?? 0)
-            .toInt();
-        final currentVehicle = ((rows.first['vehicle_visits'] as num?) ?? 0)
-            .toInt();
-        await txn.update(
-          _blockSegmentsTable,
-          <String, Object?>{
-            'visits': currentVisits + 1,
-            'walking_visits': currentWalking +
-                (transportMode == FootprintTransportMode.walking ? 1 : 0),
-            'vehicle_visits': currentVehicle +
-                (transportMode == FootprintTransportMode.vehicle ? 1 : 0),
-            'last_seen': at.toIso8601String(),
-          },
-          where: 'id = ?',
-          whereArgs: [id],
+        await txn.rawUpdate(
+          'UPDATE $_blockSegmentsTable '
+          'SET visits = visits + 1, '
+          'walking_visits = walking_visits + ?, '
+          'vehicle_visits = vehicle_visits + ?, '
+          'last_seen = ? '
+          'WHERE id = ?',
+          [walkingInc, vehicleInc, lastSeen, id],
         );
       }
     });
@@ -568,24 +570,28 @@ class FootprintStorage {
     }
 
     final db = await _database();
+    final idList = uniqueIds.toList(growable: false);
+    final placeholders = List.filled(idList.length, '?').join(', ');
+    final rows = await db.query(
+      _blocksTable,
+      columns: const ['id', 'visits', 'last_seen', 'walking_visits', 'vehicle_visits'],
+      where: 'id IN ($placeholders)',
+      whereArgs: idList,
+    );
+    final blockMap = <String, Map<String, Object?>>{
+      for (final row in rows) row['id'] as String: row,
+    };
+    final walkingInc =
+        transportMode == FootprintTransportMode.walking ? 1 : 0;
+    final vehicleInc =
+        transportMode == FootprintTransportMode.vehicle ? 1 : 0;
+    final lastSeenStr = at.toIso8601String();
     await db.transaction((txn) async {
       for (final id in uniqueIds) {
-        final rows = await txn.query(
-          _blocksTable,
-          columns: const ['visits', 'last_seen', 'walking_visits', 'vehicle_visits'],
-          where: 'id = ?',
-          whereArgs: [id],
-          limit: 1,
-        );
-        if (rows.isEmpty) {
-          continue;
-        }
-        final currentVisits = ((rows.first['visits'] as num?) ?? 0).toInt();
-        final currentWalking = ((rows.first['walking_visits'] as num?) ?? 0)
-            .toInt();
-        final currentVehicle = ((rows.first['vehicle_visits'] as num?) ?? 0)
-            .toInt();
-        final rawLastSeen = rows.first['last_seen'] as String?;
+        final row = blockMap[id];
+        if (row == null) continue;
+        final currentVisits = ((row['visits'] as num?) ?? 0).toInt();
+        final rawLastSeen = row['last_seen'] as String?;
         final lastSeen = rawLastSeen == null ? null : DateTime.parse(rawLastSeen);
         final shouldIncrement =
             lastSeen == null || at.difference(lastSeen) >= const Duration(hours: 6);
@@ -593,11 +599,9 @@ class FootprintStorage {
           _blocksTable,
           <String, Object?>{
             'visits': shouldIncrement ? currentVisits + 1 : currentVisits,
-            'walking_visits': currentWalking +
-                (transportMode == FootprintTransportMode.walking ? 1 : 0),
-            'vehicle_visits': currentVehicle +
-                (transportMode == FootprintTransportMode.vehicle ? 1 : 0),
-            'last_seen': at.toIso8601String(),
+            'walking_visits': ((row['walking_visits'] as num?) ?? 0).toInt() + walkingInc,
+            'vehicle_visits': ((row['vehicle_visits'] as num?) ?? 0).toInt() + vehicleInc,
+            'last_seen': lastSeenStr,
           },
           where: 'id = ?',
           whereArgs: [id],
@@ -902,6 +906,60 @@ class FootprintStorage {
     return raw == null ? null : double.tryParse(raw);
   }
 
+  static Future<void> _printDiagnostics(Database db) async {
+    final cells = sqflite.Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM $_cellsTable'),
+    ) ?? 0;
+    final segments = sqflite.Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM $_blockSegmentsTable'),
+    ) ?? 0;
+    final blocks = sqflite.Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM $_blocksTable'),
+    ) ?? 0;
+    final meta = sqflite.Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM $_metaTable'),
+    ) ?? 0;
+
+    final oldestCell = await db.rawQuery(
+      'SELECT MIN(last_seen) as oldest FROM $_cellsTable',
+    );
+    final newestCell = await db.rawQuery(
+      'SELECT MAX(last_seen) as newest FROM $_cellsTable',
+    );
+    final expiredCells = sqflite.Sqflite.firstIntValue(
+      await db.rawQuery(
+        "SELECT COUNT(*) FROM $_cellsTable WHERE last_seen < ?",
+        [DateTime.now().subtract(const Duration(days: 14)).toIso8601String()],
+      ),
+    ) ?? 0;
+
+    debugPrint('╔══════════════════════════════════════════╗');
+    debugPrint('║     DONDEPASO DATABASE DIAGNOSTICS       ║');
+    debugPrint('╠══════════════════════════════════════════╣');
+    debugPrint('║ Cells:          $cells');
+    debugPrint('║ Block segments: $segments');
+    debugPrint('║ Blocks:         $blocks');
+    debugPrint('║ Meta entries:   $meta');
+    debugPrint('║ Expired cells (>14d): $expiredCells');
+    debugPrint('║ Oldest cell:    ${oldestCell.first['oldest']}');
+    debugPrint('║ Newest cell:    ${newestCell.first['newest']}');
+    debugPrint('╚══════════════════════════════════════════╝');
+  }
+
+  static Future<void> _purgeExpiredCells(Database db) async {
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 14))
+        .toIso8601String();
+    final deleted = await db.delete(
+      _cellsTable,
+      where: 'last_seen < ?',
+      whereArgs: [cutoff],
+    );
+    if (deleted > 0) {
+      debugPrint('[DondePaso] Purged $deleted expired cells (>14 days old)');
+    }
+  }
+
   static Future<void> _createSchema(Database db) async {
     await db.execute('''
       CREATE TABLE $_metaTable (
@@ -951,5 +1009,17 @@ class FootprintStorage {
         last_seen TEXT
       )
     ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_cells_last_seen ON $_cellsTable (last_seen)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_cells_h3 ON $_cellsTable (h3_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_segments_mid ON $_blockSegmentsTable (mid_lat, mid_lon)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_blocks_center ON $_blocksTable (center_lat, center_lon)',
+    );
   }
 }

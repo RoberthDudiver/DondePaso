@@ -272,76 +272,102 @@ class _FogPainter extends CustomPainter {
   }
 
   void _paintHexTexture(Canvas canvas, List<_VisibleHexRender> visibleHexes) {
-    for (final render in visibleHexes) {
-      final outerGlowBlur = (4.0 + (render.visits.clamp(1, 10) * 0.68))
-          .toDouble();
+    if (visibleHexes.isEmpty) return;
 
-      if (lightMapMode) {
-        final warmGlow = Color.lerp(
-          const Color(0xFF955200),
-          const Color(0xFFC77E18),
-          render.whiteness,
-        )!;
-        final edgeColor = render.transportMode == FootprintTransportMode.vehicle
-            ? const Color(0xFF55AFFF)
-            : warmGlow;
-        canvas.drawPath(
-          render.path,
-          Paint()
-            ..blendMode = BlendMode.plus
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, outerGlowBlur)
-            ..color = warmGlow.withValues(
-              alpha: 0.05 + (render.clarity * 0.05),
-            ),
-        );
-        canvas.drawPath(
-          render.path,
-          Paint()
-            ..blendMode = BlendMode.srcOver
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.65
-            ..color = edgeColor.withValues(
-              alpha: render.transportMode == FootprintTransportMode.vehicle
-                  ? 0.16 + (render.clarity * 0.10)
-                  : 0.04 + (render.clarity * 0.05),
-            ),
-        );
+    // Batch all hex paths into walking/vehicle groups to minimize draw calls.
+    final walkingGlow = ui.Path();
+    final vehicleGlow = ui.Path();
+    final walkingStroke = ui.Path();
+    final vehicleStroke = ui.Path();
+
+    for (final render in visibleHexes) {
+      if (render.transportMode == FootprintTransportMode.vehicle) {
+        vehicleGlow.addPath(render.path, Offset.zero);
+        vehicleStroke.addPath(render.path, Offset.zero);
       } else {
-        final edgeColor = render.transportMode == FootprintTransportMode.vehicle
-            ? const Color(0xFF7BC7FF)
-            : Colors.white;
-        canvas.drawPath(
-          render.path,
-          Paint()
-            ..blendMode = BlendMode.plus
-            ..color = Colors.white.withValues(
-              alpha: (0.04 + (render.clarity * 0.05)) * render.whiteness,
-            ),
-        );
-        canvas.drawPath(
-          render.path,
-          Paint()
-            ..blendMode = BlendMode.srcOver
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.55
-            ..color = edgeColor.withValues(
-              alpha: render.transportMode == FootprintTransportMode.vehicle
-                  ? 0.14 + (render.clarity * 0.08)
-                  : (0.02 + (render.clarity * 0.04)) * render.whiteness,
-            ),
-        );
+        walkingGlow.addPath(render.path, Offset.zero);
+        walkingStroke.addPath(render.path, Offset.zero);
       }
+    }
+
+    const glowBlur = 6.0;
+
+    if (lightMapMode) {
+      // Walking glow + stroke
+      canvas.drawPath(
+        walkingGlow,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, glowBlur)
+          ..color = const Color(0xFFC77E18).withValues(alpha: 0.07),
+      );
+      canvas.drawPath(
+        walkingStroke,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.65
+          ..color = const Color(0xFFC77E18).withValues(alpha: 0.06),
+      );
+      // Vehicle glow + stroke
+      canvas.drawPath(
+        vehicleGlow,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, glowBlur)
+          ..color = const Color(0xFF55AFFF).withValues(alpha: 0.07),
+      );
+      canvas.drawPath(
+        vehicleStroke,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.65
+          ..color = const Color(0xFF55AFFF).withValues(alpha: 0.18),
+      );
+    } else {
+      // Walking glow + stroke
+      canvas.drawPath(
+        walkingGlow,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..color = Colors.white.withValues(alpha: 0.06),
+      );
+      canvas.drawPath(
+        walkingStroke,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.55
+          ..color = Colors.white.withValues(alpha: 0.04),
+      );
+      // Vehicle glow + stroke
+      canvas.drawPath(
+        vehicleGlow,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..color = const Color(0xFF7BC7FF).withValues(alpha: 0.06),
+      );
+      canvas.drawPath(
+        vehicleStroke,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.55
+          ..color = const Color(0xFF7BC7FF).withValues(alpha: 0.16),
+      );
     }
   }
 
+  /// Uses addPath instead of expensive Path.combine(union) calls.
   ui.Path? _mergedVisibleHexPath(List<_VisibleHexRender> visibleHexes) {
     if (visibleHexes.isEmpty) {
       return null;
     }
 
-    var merged = ui.Path.from(visibleHexes.first.path);
-    for (final render in visibleHexes.skip(1)) {
-      merged = ui.Path.combine(ui.PathOperation.union, merged, render.path);
+    final merged = ui.Path();
+    for (final render in visibleHexes) {
+      merged.addPath(render.path, Offset.zero);
     }
     return merged;
   }

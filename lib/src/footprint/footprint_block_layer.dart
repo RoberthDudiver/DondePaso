@@ -56,81 +56,88 @@ class _BlockPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final viewportRect = Offset.zero & size;
+
+    // Batch visible block paths into walking/vehicle groups.
+    final walkingPaths = ui.Path();
+    final vehiclePaths = ui.Path();
+    var hasWalking = false;
+    var hasVehicle = false;
+
     for (final block in blocks) {
       final lastSeen = block.lastSeen;
-      if (lastSeen == null) {
-        continue;
-      }
+      if (lastSeen == null) continue;
+
       final freshness =
           1 -
           (now.difference(lastSeen).inSeconds / footprintForgetAfter.inSeconds);
-      final clampedFreshness = freshness.clamp(0, 1).toDouble();
-      if (clampedFreshness <= 0) {
-        continue;
-      }
+      if (freshness <= 0) continue;
 
       final path = _polygonPath(block);
-      if (path == null || !path.getBounds().overlaps(Offset.zero & size)) {
-        continue;
+      if (path == null || !path.getBounds().overlaps(viewportRect)) continue;
+
+      if (block.transportMode == FootprintTransportMode.vehicle) {
+        vehiclePaths.addPath(path, Offset.zero);
+        hasVehicle = true;
+      } else {
+        walkingPaths.addPath(path, Offset.zero);
+        hasWalking = true;
       }
+    }
 
-      final intensity =
-          (0.28 +
-                  (block.coverageRatio * 0.42) +
-                  (clampedFreshness * 0.20) +
-                  ((block.visits.clamp(1, 8) - 1) * 0.04))
-              .clamp(0.24, 0.92);
+    final blurRadius = lightMapMode ? 10.0 : 14.0;
 
-      final isVehicle = block.transportMode == FootprintTransportMode.vehicle;
-      final fillColor = lightMapMode
-          ? Color.lerp(
-              isVehicle ? const Color(0xFF173D68) : const Color(0xFF8C2F00),
-              isVehicle ? const Color(0xFF3C85D8) : const Color(0xFFB95F18),
-              intensity,
-            )!
-          : Color.lerp(
-              isVehicle ? const Color(0xFF2A7DCC) : const Color(0xFFFF4A14),
-              isVehicle ? const Color(0xFFD7EEFF) : const Color(0xFFFFF4C1),
-              intensity,
-            )!;
-
+    if (hasWalking) {
+      final color = lightMapMode
+          ? const Color(0xFFB95F18)
+          : const Color(0xFFFF8844);
       canvas.drawPath(
-        path,
+        walkingPaths,
         Paint()
-          ..blendMode = lightMapMode ? BlendMode.plus : BlendMode.plus
-          ..maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            lightMapMode ? 10.0 : 14.0,
-          )
-          ..color = fillColor.withValues(
-            alpha: lightMapMode
-                ? 0.10 + (clampedFreshness * 0.05)
-                : 0.18 + (clampedFreshness * 0.10),
-          ),
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
+          ..color = color.withValues(alpha: lightMapMode ? 0.12 : 0.22),
       );
-
       canvas.drawPath(
-        path,
+        walkingPaths,
         Paint()
           ..blendMode = BlendMode.srcOver
-          ..color = fillColor.withValues(
-            alpha: lightMapMode
-                ? 0.14 + (clampedFreshness * 0.06)
-                : 0.22 + (clampedFreshness * 0.12),
-          ),
+          ..color = color.withValues(alpha: lightMapMode ? 0.16 : 0.28),
       );
-
       canvas.drawPath(
-        path,
+        walkingPaths,
         Paint()
           ..blendMode = BlendMode.srcOver
           ..style = PaintingStyle.stroke
-          ..strokeWidth = isVehicle ? 1.4 : 1.0
-          ..color = fillColor.withValues(
-            alpha: lightMapMode
-                ? (isVehicle ? 0.28 : 0.18) + (clampedFreshness * 0.06)
-                : (isVehicle ? 0.30 : 0.18) + (clampedFreshness * 0.08),
-          ),
+          ..strokeWidth = 1.0
+          ..color = color.withValues(alpha: lightMapMode ? 0.20 : 0.22),
+      );
+    }
+
+    if (hasVehicle) {
+      final color = lightMapMode
+          ? const Color(0xFF3C85D8)
+          : const Color(0xFF88CCFF);
+      canvas.drawPath(
+        vehiclePaths,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius)
+          ..color = color.withValues(alpha: lightMapMode ? 0.12 : 0.22),
+      );
+      canvas.drawPath(
+        vehiclePaths,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..color = color.withValues(alpha: lightMapMode ? 0.16 : 0.28),
+      );
+      canvas.drawPath(
+        vehiclePaths,
+        Paint()
+          ..blendMode = BlendMode.srcOver
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..color = color.withValues(alpha: lightMapMode ? 0.30 : 0.32),
       );
     }
   }
