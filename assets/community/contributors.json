@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-19T04:55:14.159840+00:00",
+  "generatedAt": "2026-04-30T04:17:45.265674+00:00",
   "repository": {
     "owner": "RoberthDudiver",
     "name": "DondePaso",
@@ -16,11 +16,11 @@
       "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
       "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
     },
-    "commits": 28,
+    "commits": 31,
     "mergedPrs": 10,
     "changedLines": 10123,
-    "score": 235,
-    "lastContributionAt": "2026-03-18T02:26:15Z",
+    "score": 244,
+    "lastContributionAt": "2026-03-26T15:55:53Z",
     "isOwner": true
   },
   "ranking": [
@@ -35,11 +35,11 @@
         "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
         "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
       },
-      "commits": 28,
+      "commits": 31,
       "mergedPrs": 10,
       "changedLines": 10123,
-      "score": 235,
-      "lastContributionAt": "2026-03-18T02:26:15Z",
+      "score": 244,
+      "lastContributionAt": "2026-03-26T15:55:53Z",
       "isOwner": true
     },
     {
@@ -51,10 +51,10 @@
       "role": "Contributor",
       "summary": null,
       "commits": 0,
-      "mergedPrs": 2,
-      "changedLines": 94,
-      "score": 20,
-      "lastContributionAt": "2026-03-17T09:46:12Z",
+      "mergedPrs": 3,
+      "changedLines": 142,
+      "score": 31,
+      "lastContributionAt": "2026-03-19T11:26:19Z",
       "isOwner": false
     }
   ],
@@ -70,11 +70,11 @@
         "en": "Creator of DondePaso. Building an honest map of how much of our world we actually explore.",
         "es": "Creador de DondePaso. Construyendo un mapa honesto de cuanto exploramos realmente nuestro entorno."
       },
-      "commits": 28,
+      "commits": 31,
       "mergedPrs": 10,
       "changedLines": 10123,
-      "score": 235,
-      "lastContributionAt": "2026-03-18T02:26:15Z",
+      "score": 244,
+      "lastContributionAt": "2026-03-26T15:55:53Z",
       "isOwner": true
     },
     {
@@ -86,10 +86,10 @@
       "role": "Contributor",
       "summary": null,
       "commits": 0,
-      "mergedPrs": 2,
-      "changedLines": 94,
-      "score": 20,
-      "lastContributionAt": "2026-03-17T09:46:12Z",
+      "mergedPrs": 3,
+      "changedLines": 142,
+      "score": 31,
+      "lastContributionAt": "2026-03-19T11:26:19Z",
       "isOwner": false
     }
   ]
